@@ -1,43 +1,49 @@
 name: Dialyzer
 
-on: push
+on: [push]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
-  Dialyzer:
+  build:
+    name: Dialyzer
+
     runs-on: ubuntu-latest
 
-    container:
-      image: mikaak/elixir:1.13-alpine
-      env:
-        MIX_ENV: test
+    env:
+      MIX_ENV: test
+      CI: true
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rebar & Hex
-        run: mix local.hex --force && mix local.rebar --force
-
-      - name: Install Tar
-        run: apk add --no-cache tar
-
-      - name: Cache Deps & Build
-        uses: actions/cache@v4
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
         with:
-          key: ${{ runner.os }}-mix-dialyzer-${{ hashFiles('**/mix.lock') }}
+          version-type: strict
+          version-file: .tool-versions
+
+      - name: Restore dependencies cache
+        id: dependency-cache
+        uses: actions/cache@v5
+        with:
           path: |
-            deps
-            _build
-            dialyzer
-          restore-keys: |
-            ${{ runner.os }}-mix-dialyzer-
+                _build
+                deps
+                dialyzer
+          key: ${{ github.ref }}-dialyzer-v1-${{ hashFiles('**/mix.lock') }}-${{ hashFiles('./.tool-versions') }}
+          restore-keys: ${{ github.ref }}-dialyzer-v1-${{ hashFiles('**/mix.lock') }}-${{ hashFiles('./.tool-versions') }}
 
-      - name: Install Dependencies
-        run: mix deps.get
+      - name: Remove app/* from _build/{test,prod,dev}/lib # This forces just our apps to recompile every time
+        run: rm -rf _build/{test,prod,dev}/lib/$(ls apps)
 
-      - name: Compile Project
-        run: mix compile
+      - name: Install dependencies & compile
+        run: mix do deps.get, compile
 
       - name: Run Dialyzer
         run: mix dialyzer
-
-

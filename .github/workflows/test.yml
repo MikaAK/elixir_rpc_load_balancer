@@ -1,39 +1,48 @@
 name: Test
 
-on: push
+on: [push]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
-  Test:
+  build:
+    name: Test
+
     runs-on: ubuntu-latest
 
-    container:
-      image: mikaak/elixir:1.13-alpine
-      env:
-        MIX_ENV: test
+    env:
+      MIX_ENV: test
+      CI: true
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rebar & Hex
-        run: mix local.hex --force && mix local.rebar --force
-
-      - name: Install Tar
-        run: apk add --no-cache tar
-
-      - name: Cache Deps & Build
-        uses: actions/cache@v4
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
         with:
-          key: ${{github.ref}}-deps-build-cache
+          version-type: strict
+          version-file: .tool-versions
+
+      - name: Restore dependencies cache
+        id: dependency-cache
+        uses: actions/cache@v5
+        with:
           path: |
-            ./deps
-            ./_build
-            !._build/dev/lib/error_message/
+                _build
+                deps
+          key: ${{ github.ref }}-test-v1-${{ hashFiles('**/mix.lock') }}-${{ hashFiles('./.tool-versions') }}
+          restore-keys: ${{ github.ref }}-test-v1-${{ hashFiles('**/mix.lock') }}-${{ hashFiles('./.tool-versions') }}
 
-      - name: Install Dependencies
-        run: mix deps.get
+      - name: Remove app/* from _build/{test,prod,dev}/lib # This forces just our apps to recompile every time
+        run: rm -rf _build/{test,prod,dev}/lib/$(ls apps)
 
-      - name: Compile Project
-        run: mix compile
+      - name: Install dependencies & compile
+        run: mix do deps.get, compile
 
       - name: Run Tests
         run: mix test
