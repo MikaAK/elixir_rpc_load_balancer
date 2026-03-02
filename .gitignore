@@ -61,3 +61,4 @@ Sessionx.vim
 tags
 # Persistent undo
 [._]*.un~
+.dialyzer

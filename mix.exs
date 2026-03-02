@@ -15,8 +15,8 @@ defmodule RpcLoadBalancer.MixProject do
       dialyzer: [
         plt_add_apps: [:ex_unit, :mix, :credo, :jason],
         list_unused_filters: true,
-        plt_local_path: "dialyzer",
-        plt_core_path: "dialyzer",
+        plt_local_path: ".dialyzer",
+        plt_core_path: ".dialyzer",
         flags: [:unmatched_returns]
       ],
       preferred_cli_env: [
