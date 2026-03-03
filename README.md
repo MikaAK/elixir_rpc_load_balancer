@@ -1,4 +1,10 @@
 # RpcLoadBalancer
+[![Hex version badge](https://img.shields.io/hexpm/v/rpc_load_balancer.svg)](https://hex.pm/packages/rpc_load_balancer)
+[![Test](https://github.com/MikaAK/rpc_load_balancer/actions/workflows/test.yml/badge.svg)](https://github.com/MikaAK/rpc_load_balancer/actions/workflows/test.yml)
+[![Credo](https://github.com/MikaAK/rpc_load_balancer/actions/workflows/credo.yml/badge.svg)](https://github.com/MikaAK/rpc_load_balancer/actions/workflows/credo.yml)
+[![Dialyzer](https://github.com/MikaAK/rpc_load_balancer/actions/workflows/dialyzer.yml/badge.svg)](https://github.com/MikaAK/rpc_load_balancer/actions/workflows/dialyzer.yml)
+[![Coverage](https://github.com/MikaAK/rpc_load_balancer/actions/workflows/coverage.yml/badge.svg)](https://github.com/MikaAK/rpc_load_balancer/actions/workflows/coverage.yml)
+
 
 An Elixir library for executing Remote Procedure Calls across distributed BEAM nodes with a built-in load balancer. It wraps Erlang's `:erpc` module with structured error handling and provides a pluggable node selection layer powered by OTP's `:pg` process groups.
 
