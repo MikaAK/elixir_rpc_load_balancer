@@ -68,7 +68,24 @@ defmodule RpcLoadBalancer.MixProject do
   defp docs do
     [
       main: "overview",
-      source_url: "https://github.com/MikaAK/rpc_load_balancer"
+      source_url: "https://github.com/MikaAK/rpc_load_balancer",
+      extras: [
+        "docs/overview.md",
+        "docs/tutorials/getting-started.md",
+        "docs/how-to/custom-selection-algorithm.md",
+        "docs/how-to/hash-based-routing.md",
+        "docs/how-to/node-filtering.md",
+        "docs/how-to/connection-tracking.md",
+        "docs/how-to/weighted-round-robin.md",
+        "docs/reference/load_balancer.md",
+        "docs/explanation/architecture.md"
+      ],
+      groups_for_extras: [
+        Tutorials: ~r/docs\/tutorials\/.*/,
+        "How-To Guides": ~r/docs\/how-to\/.*/,
+        Reference: ~r/docs\/reference\/.*/,
+        Explanation: ~r/docs\/explanation\/.*/
+      ]
     ]
   end
 end
