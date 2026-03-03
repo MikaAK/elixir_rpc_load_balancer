@@ -13,6 +13,13 @@ defmodule RpcLoadBalancerTest do
     SelectionAlgorithm.WeightedRoundRobin
   ]
 
+  defp algorithm_short_name(algorithm) do
+    algorithm
+    |> Module.split()
+    |> List.last()
+    |> Macro.underscore()
+  end
+
   test "call wraps :erpc.call/5 result" do
     assert {:ok, :ok} === RpcLoadBalancer.call(node(), Kernel, :apply, [fn -> :ok end, []])
   end
@@ -23,10 +30,13 @@ defmodule RpcLoadBalancerTest do
 
   describe "integration" do
     for algorithm <- @selection_algorithms do
-      @algorithm algorithm
-      @lb_name :"integration_#{algorithm |> Module.split() |> List.last() |> Macro.underscore()}"
+      short_name = List.last(Module.split(algorithm))
+      snake_name = Macro.underscore(short_name)
 
-      test "#{Module.split(algorithm) |> List.last()} select_node returns current node" do
+      @algorithm algorithm
+      @lb_name :"integration_#{snake_name}"
+
+      test "#{short_name} select_node returns current node" do
         {:ok, _pid} =
           LoadBalancer.start_link(
             name: @lb_name,
@@ -39,8 +49,8 @@ defmodule RpcLoadBalancerTest do
         assert {:ok, node()} === LoadBalancer.select_node(@lb_name)
       end
 
-      test "#{Module.split(algorithm) |> List.last()} call executes on a selected node" do
-        lb_name = :"integration_call_#{@algorithm |> Module.split() |> List.last() |> Macro.underscore()}"
+      test "#{short_name} call executes on a selected node" do
+        lb_name = :"integration_call_#{algorithm_short_name(@algorithm)}"
 
         {:ok, _pid} =
           LoadBalancer.start_link(
@@ -55,8 +65,8 @@ defmodule RpcLoadBalancerTest do
                  LoadBalancer.call(lb_name, Kernel, :apply, [fn -> :integration_result end, []])
       end
 
-      test "#{Module.split(algorithm) |> List.last()} cast executes on a selected node" do
-        lb_name = :"integration_cast_#{@algorithm |> Module.split() |> List.last() |> Macro.underscore()}"
+      test "#{short_name} cast executes on a selected node" do
+        lb_name = :"integration_cast_#{algorithm_short_name(@algorithm)}"
 
         {:ok, _pid} =
           LoadBalancer.start_link(
@@ -70,8 +80,8 @@ defmodule RpcLoadBalancerTest do
         assert :ok === LoadBalancer.cast(lb_name, Kernel, :apply, [fn -> :ok end, []])
       end
 
-      test "#{Module.split(algorithm) |> List.last()} get_members returns current node" do
-        lb_name = :"integration_members_#{@algorithm |> Module.split() |> List.last() |> Macro.underscore()}"
+      test "#{short_name} get_members returns current node" do
+        lb_name = :"integration_members_#{algorithm_short_name(@algorithm)}"
 
         {:ok, _pid} =
           LoadBalancer.start_link(

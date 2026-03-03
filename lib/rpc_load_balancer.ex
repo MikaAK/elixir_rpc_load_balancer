@@ -25,15 +25,13 @@ defmodule RpcLoadBalancer do
 
   @spec cast(node(), module(), atom(), [term()]) :: :ok | {:error, ErrorMessage.t()}
   def cast(node, module, fun, args) do
-    try do
-      :erpc.cast(node, module, fun, args)
-    rescue
-      e in ErlangError ->
-        {:error, erlang_error_to_error_message(e, node)}
+    :erpc.cast(node, module, fun, args)
+  rescue
+    e in ErlangError ->
+      {:error, erlang_error_to_error_message(e, node)}
 
-      e ->
-        {:error, ErrorMessage.service_unavailable("unavailable", %{node: node, details: e})}
-    end
+    e ->
+      {:error, ErrorMessage.service_unavailable("unavailable", %{node: node, details: e})}
   end
 
   defp erlang_error_to_error_message(%ErlangError{original: {:erpc, :timeout}}, node) do

@@ -169,7 +169,7 @@ defmodule RpcLoadBalancer.LoadBalancer do
   end
 
   defp random_load_balancer_name do
-    random = :crypto.strong_rand_bytes(5) |> Base.encode16(case: :lower)
+    random = Base.encode16(:crypto.strong_rand_bytes(5), case: :lower)
     String.to_atom("load_balancer_#{random}")
   end
 

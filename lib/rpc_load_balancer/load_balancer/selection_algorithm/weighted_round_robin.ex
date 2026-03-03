@@ -52,11 +52,12 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.WeightedRoundRobin do
   end
 
   defp maybe_reset_count(load_balancer_name, count) when count > 10_000_000 do
-    CounterCache.update_counter(
-      {:weighted_counter, load_balancer_name},
-      {2, -count},
-      {{:weighted_counter, load_balancer_name}, 0}
-    )
+    _ =
+      CounterCache.update_counter(
+        {:weighted_counter, load_balancer_name},
+        {2, -count},
+        {{:weighted_counter, load_balancer_name}, 0}
+      )
 
     :ok
   end

@@ -25,7 +25,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.PowerOfTwo do
   def choose_from_nodes(load_balancer_name, node_list, opts \\ [])
 
   def choose_from_nodes(load_balancer_name, [node], _opts) do
-    increment_connections(load_balancer_name, node)
+    _ = increment_connections(load_balancer_name, node)
     node
   end
 
@@ -36,7 +36,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.PowerOfTwo do
     count_b = get_connection_count(load_balancer_name, candidate_b)
 
     chosen = if count_a <= count_b, do: candidate_a, else: candidate_b
-    increment_connections(load_balancer_name, chosen)
+    _ = increment_connections(load_balancer_name, chosen)
     chosen
   end
 
@@ -53,7 +53,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.PowerOfTwo do
 
   @impl true
   def release_node(load_balancer_name, node) do
-    decrement_connections(load_balancer_name, node)
+    _ = decrement_connections(load_balancer_name, node)
     :ok
   end
 

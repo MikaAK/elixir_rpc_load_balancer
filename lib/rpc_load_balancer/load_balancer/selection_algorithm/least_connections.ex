@@ -27,7 +27,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastConnections do
       |> Enum.min_by(&elem(&1, 1))
       |> elem(0)
 
-    increment_connections(load_balancer_name, node)
+    _ = increment_connections(load_balancer_name, node)
     node
   end
 
@@ -44,7 +44,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastConnections do
 
   @impl true
   def release_node(load_balancer_name, node) do
-    decrement_connections(load_balancer_name, node)
+    _ = decrement_connections(load_balancer_name, node)
     :ok
   end
 
