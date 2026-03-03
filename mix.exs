@@ -44,7 +44,8 @@ defmodule RpcLoadBalancer.MixProject do
   defp deps do
     [
       {:error_message, "~> 0.3"},
-      {:elixir_cache, github: "MikaAK/elixir_cache", branch: "ets-rehydration"},
+      {:elixir_cache, "~> 0.4"},
+      {:libring, "~> 1.7"},
       {:castore, "~> 1.0"},
 
       {:credo, "~> 1.6", only: [:test, :dev], runtime: false},

@@ -105,6 +105,16 @@ Selects a node and executes an asynchronous RPC cast.
 
 **Returns:** `:ok | {:error, ErrorMessage.t()}`
 
+#### `select_nodes(load_balancer_name, count, opts \\ [])`
+
+Selects multiple nodes from the balancer's registered members. Algorithms that implement `choose_nodes/4` (e.g., HashRing) provide consistent multi-node selection. Others fall back to randomly shuffled nodes.
+
+**Options:** forwarded to the algorithm's `choose_nodes/4` (e.g., `key: "user:123"` for HashRing)
+
+**Returns:**
+- `{:ok, [node()]}` — up to `count` distinct nodes
+- `{:error, %ErrorMessage{code: :service_unavailable}}` when no nodes are registered
+
 #### `get_members(load_balancer_name)`
 
 Returns the deduplicated list of nodes registered in the `:pg` group for this balancer.
@@ -140,6 +150,12 @@ Called to pick one node from the available list. Receives the balancer name, the
 ```
 
 Called once during balancer startup. Receives `algorithm_opts` from `start_link/1`.
+
+```elixir
+@callback choose_nodes(load_balancer_name(), [node()], pos_integer(), opts :: keyword()) :: [node()]
+```
+
+Called by `LoadBalancer.select_nodes/3` to pick multiple distinct nodes for a given key. Used for replica selection. Algorithms that don't implement this fall back to returning randomly shuffled nodes.
 
 ```elixir
 @callback on_node_change(load_balancer_name(), {:joined | :left, [node()]}) :: :ok
@@ -181,7 +197,14 @@ Implements: `init/2`, `choose_from_nodes/3`, `on_node_change/2`, `release_node/2
 
 ### HashRing
 
-Maps a caller-provided `:key` to a node index using `:erlang.phash2/2` over the sorted node list. Falls back to random selection when no key is given.
+Consistent hash ring powered by [`libring`](https://hex.pm/packages/libring). Each physical node is sharded into `weight` points (default: 128) distributed across a `2^32` continuum using SHA-256. Key lookup finds the next highest shard on the ring via `gb_tree`. Falls back to random selection when no key is given. The ring is stored in ETS and lazily rebuilt when topology changes.
+
+Supports replica selection via `choose_nodes/4` using `HashRing.key_to_nodes/3` — returns multiple distinct nodes for a given key, walking the ring from the primary shard.
+
+**Algorithm options:**
+- `:weight` — number of shards per physical node (default: `128`)
+
+Implements: `init/2`, `choose_from_nodes/3`, `choose_nodes/4`, `on_node_change/2`
 
 ### WeightedRoundRobin
 

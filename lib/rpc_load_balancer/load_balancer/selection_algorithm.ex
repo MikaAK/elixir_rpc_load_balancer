@@ -9,10 +9,12 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm do
 
   @callback init(load_balancer_name(), opts :: keyword()) :: :ok
   @callback choose_from_nodes(load_balancer_name(), [node()], opts :: keyword()) :: node()
+  @callback choose_nodes(load_balancer_name(), [node()], pos_integer(), opts :: keyword()) ::
+              [node()]
   @callback on_node_change(load_balancer_name(), {:joined | :left, [node()]}) :: :ok
   @callback release_node(load_balancer_name(), node()) :: :ok
 
-  @optional_callbacks [init: 2, on_node_change: 2, release_node: 2]
+  @optional_callbacks [init: 2, choose_nodes: 4, on_node_change: 2, release_node: 2]
 
   @spec get_algorithm(load_balancer_name()) :: ErrorMessage.t_res(nil | module())
   def get_algorithm(load_balancer_name) do
@@ -36,6 +38,18 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm do
   @spec choose_from_nodes(module(), load_balancer_name(), [node()], keyword()) :: node()
   def choose_from_nodes(algorithm, load_balancer_name, node_list, opts \\ []) do
     algorithm.choose_from_nodes(load_balancer_name, node_list, opts)
+  end
+
+  @spec choose_nodes(module(), load_balancer_name(), [node()], pos_integer(), keyword()) ::
+          [node()]
+  def choose_nodes(algorithm, load_balancer_name, node_list, count, opts \\ []) do
+    if function_exported?(algorithm, :choose_nodes, 4) do
+      algorithm.choose_nodes(load_balancer_name, node_list, count, opts)
+    else
+      node_list
+      |> Enum.shuffle()
+      |> Enum.take(count)
+    end
   end
 
   @spec on_node_change(module(), load_balancer_name(), {:joined | :left, [node()]}) :: :ok

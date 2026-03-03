@@ -103,14 +103,16 @@ This is acceptable because:
 
 RoundRobin and WeightedRoundRobin reset their counters when they exceed 10,000,000. This prevents the integer from growing unboundedly over the lifetime of a long-running node. The reset is not atomic with the read, but since the counter is used modulo the node count, a brief discontinuity has no practical impact.
 
-### HashRing trade-offs
+### HashRing design
 
-The current HashRing implementation uses a simple modular hash (`phash2(key, node_count)`) rather than a full consistent hash ring with virtual nodes. This means:
+The HashRing delegates to [`libring`](https://hex.pm/packages/libring), which implements a consistent hash ring using SHA-256 hashing and a `gb_tree` for O(log n) lookups. Each physical node is sharded into 128 points (configurable via `:weight`) across a `2^32` continuum.
 
-- **Pro** — zero state, zero initialization cost, O(1) selection
-- **Con** — when nodes join or leave, most keys remap to different nodes
+Key design decisions:
 
-For use cases that need minimal key redistribution on topology changes, a custom algorithm with virtual nodes would be more appropriate.
+- **`libring` over a custom implementation** — `libring` is a well-tested, battle-hardened library. It handles SHA-256 hashing, `gb_tree` ring storage, and node weight configuration out of the box, removing the need for custom binary search and vnode management.
+- **Lazy ring rebuilding** — when `on_node_change/2` fires, the cached ring is invalidated (set to `nil`). The next `choose_from_nodes/3` call detects this and rebuilds the ring from the current node list. This avoids rebuilding multiple times during rapid join/leave bursts.
+- **Minimal key redistribution** — when a node is added, only ~1/N of keys move (the theoretical minimum). When a node is removed, only the keys assigned to that node are redistributed to their next clockwise neighbour.
+- **Replica selection via `choose_nodes/4`** — `libring`'s `key_to_nodes/3` walks the ring from the primary shard to find N distinct physical nodes. This enables consistent replica placement where the same key always maps to the same ordered set of nodes, which is essential for replication strategies.
 
 ## Error handling philosophy
 

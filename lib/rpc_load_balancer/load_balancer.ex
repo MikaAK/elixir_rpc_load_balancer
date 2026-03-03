@@ -102,6 +102,26 @@ defmodule RpcLoadBalancer.LoadBalancer do
   end
 
   @doc """
+  Selects multiple nodes from the available nodes for the load balancer.
+
+  Useful for replication strategies where a key needs to be routed to
+  a primary and one or more replica nodes. Returns up to `count` distinct
+  nodes.
+
+  Algorithms that implement the `choose_nodes/4` callback (e.g., HashRing)
+  provide consistent multi-node selection. Other algorithms fall back to
+  returning `count` randomly shuffled nodes.
+  """
+  @spec select_nodes(name(), pos_integer(), keyword()) :: ErrorMessage.t_res([node()])
+  def select_nodes(load_balancer_name, count, opts \\ []) do
+    with {:ok, node_list} <- get_members(load_balancer_name),
+         {:ok, algorithm} <- SelectionAlgorithm.get_algorithm(load_balancer_name) do
+      {:ok,
+       SelectionAlgorithm.choose_nodes(algorithm, load_balancer_name, node_list, count, opts)}
+    end
+  end
+
+  @doc """
   Releases a node after an RPC call completes.
 
   Used by connection-tracking algorithms (e.g., Least Connections) to
