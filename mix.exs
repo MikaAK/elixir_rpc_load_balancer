@@ -18,8 +18,13 @@ defmodule RpcLoadBalancer.MixProject do
         plt_local_path: ".dialyzer",
         plt_core_path: ".dialyzer",
         flags: [:unmatched_returns]
-      ],
-      preferred_cli_env: [
+      ]
+    ]
+  end
+
+  def cli do
+    [
+      preferred_envs: [
         dialyzer: :test,
         coveralls: :test,
         "coveralls.detail": :test,
