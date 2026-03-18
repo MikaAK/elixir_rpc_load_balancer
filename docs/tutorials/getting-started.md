@@ -121,7 +121,7 @@ With a single node both will return the same value, but in a multi-node cluster 
 
 ## Step 6: Add the balancer to your supervision tree
 
-In a real application, start load balancers under your supervisor instead of calling `start_link` manually:
+In a real application, start load balancers under your supervisor instead of calling `start_link` manually. **The load balancer should be the last child in the list.** OTP shuts down children in reverse start order, so placing it last means it shuts down first during deployment — the node deregisters from the `:pg` group before your application logic stops, preventing other nodes from routing calls to a node that is mid-shutdown.
 
 ```elixir
 defmodule MyApp.Application do
@@ -130,6 +130,9 @@ defmodule MyApp.Application do
   @impl true
   def start(_type, _args) do
     children = [
+      MyApp.Repo,
+      MyAppWeb.Endpoint,
+      # Load balancer last — shuts down first
       {RpcLoadBalancer.LoadBalancer,
        name: :my_balancer,
        selection_algorithm: RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.RoundRobin}
@@ -140,7 +143,7 @@ defmodule MyApp.Application do
 end
 ```
 
-The balancer will start, register the current node in the `:pg` group, and begin monitoring for node joins and leaves.
+The balancer will start, register the current node in the `:pg` group, and begin monitoring for node joins and leaves. On shutdown, the GenServer exits, which removes it from the `:pg` group instantly — other nodes stop routing traffic here before the rest of the application tears down.
 
 ## What you've learned
 

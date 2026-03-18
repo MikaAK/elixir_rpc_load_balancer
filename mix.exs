@@ -44,7 +44,7 @@ defmodule RpcLoadBalancer.MixProject do
   defp deps do
     [
       {:error_message, "~> 0.3"},
-      {:elixir_cache, "~> 0.4"},
+      {:elixir_cache, ">= 0.4.3"},
       {:libring, "~> 1.7"},
       {:castore, "~> 1.0"},
 

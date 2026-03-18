@@ -31,15 +31,15 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.HashRing do
 
   @behaviour RpcLoadBalancer.LoadBalancer.SelectionAlgorithm
 
-  alias RpcLoadBalancer.LoadBalancer.CounterCache
+  alias RpcLoadBalancer.LoadBalancer.ValueCache
 
   @default_weight 128
 
   @impl true
   def init(load_balancer_name, opts) do
     weight = Keyword.get(opts, :weight, @default_weight)
-    CounterCache.insert_raw({{:hash_ring_weight, load_balancer_name}, weight})
-    CounterCache.insert_raw({{:hash_ring, load_balancer_name}, nil})
+    ValueCache.put({load_balancer_name, :hash_ring_weight}, nil, weight)
+    ValueCache.put({load_balancer_name, :hash_ring}, nil, nil)
     :ok
   end
 
@@ -71,7 +71,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.HashRing do
 
   @impl true
   def on_node_change(load_balancer_name, {_event, _nodes}) do
-    CounterCache.insert_raw({{:hash_ring, load_balancer_name}, nil})
+    ValueCache.put({load_balancer_name, :hash_ring}, nil, nil)
     :ok
   end
 
@@ -90,21 +90,19 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.HashRing do
         HashRing.add_node(ring, node, weight)
       end)
 
-    CounterCache.insert_raw({{:hash_ring, load_balancer_name}, ring})
+    ValueCache.put({load_balancer_name, :hash_ring}, nil, ring)
     ring
   end
 
   defp get_ring(load_balancer_name) do
-    case CounterCache.lookup({:hash_ring, load_balancer_name}) do
-      [{_key, ring}] -> ring
-      [] -> nil
-    end
+    {:ok, ring} = ValueCache.get({load_balancer_name, :hash_ring})
+    ring
   end
 
   defp get_weight(load_balancer_name) do
-    case CounterCache.lookup({:hash_ring_weight, load_balancer_name}) do
-      [{_key, weight}] -> weight
-      [] -> @default_weight
+    case ValueCache.get({load_balancer_name, :hash_ring_weight}) do
+      {:ok, nil} -> @default_weight
+      {:ok, weight} -> weight
     end
   end
 end

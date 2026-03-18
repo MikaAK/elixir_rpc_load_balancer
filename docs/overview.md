@@ -6,7 +6,7 @@ An Elixir library for executing Remote Procedure Calls across distributed BEAM n
 
 - **RPC wrappers** — `call/5` and `cast/4` around `:erpc` with `ErrorMessage` error tuples
 - **Distributed load balancer** — automatic node discovery and registration via `:pg`
-- **Six selection algorithms** — Random, Round Robin, Least Connections, Power of Two, Hash Ring, Weighted Round Robin
+- **Seven selection algorithms** — Random, Round Robin, Least Connections, Power of Two, Hash Ring, Weighted Round Robin, Call Direct
 - **Custom algorithms** — implement the `SelectionAlgorithm` behaviour to add your own
 - **Node filtering** — restrict which nodes join a balancer with string or regex patterns
 - **Connection tracking** — ETS-backed atomic counters for connection-aware algorithms
@@ -54,6 +54,7 @@ This project's documentation follows the [Diátaxis](https://diataxis.fr/) frame
 - [Filter Which Nodes Join a Balancer](how-to/node-filtering.md)
 - [Use Connection-Tracking Algorithms](how-to/connection-tracking.md)
 - [Configure Weighted Round Robin](how-to/weighted-round-robin.md)
+- [Testing with CallDirect](how-to/testing-with-call-direct.md)
 
 ### Reference
 

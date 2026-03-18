@@ -169,6 +169,12 @@ Called when the `:pg` group membership changes.
 
 Called after an RPC call completes to clean up per-node state.
 
+```elixir
+@callback local?() :: boolean()
+```
+
+When `true`, the load balancer bypasses `:erpc` and executes calls locally via `apply/3` and casts via `spawn/3`. Used by `CallDirect`.
+
 ---
 
 ## Built-in Algorithms
@@ -211,6 +217,14 @@ Implements: `init/2`, `choose_from_nodes/3`, `choose_nodes/4`, `on_node_change/2
 Expands the node list by duplicating each node according to its weight, then cycles through with an atomic counter. Weights are passed via `algorithm_opts: [weights: %{node => integer}]`. Nodes without an explicit weight default to 1.
 
 Implements: `init/2`, `choose_from_nodes/3`
+
+### CallDirect
+
+Executes calls directly on the local node via `apply/3` instead of going through `:erpc`. `LoadBalancer.call/5` returns `{:ok, apply(module, fun, args)}` and `LoadBalancer.cast/5` uses `spawn/3` and returns `:ok`. No remote nodes are contacted.
+
+Designed for testing and single-node deployments where RPC overhead is unnecessary. Should always be used as the selection algorithm in test environments.
+
+Implements: `local?/0`, `choose_from_nodes/3`
 
 ---
 

@@ -20,11 +20,14 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.WeightedRoundRobin do
   @behaviour RpcLoadBalancer.LoadBalancer.SelectionAlgorithm
 
   alias RpcLoadBalancer.LoadBalancer.CounterCache
+  alias RpcLoadBalancer.LoadBalancer.ValueCache
+
+  @counter_slot 2
 
   @impl true
   def init(load_balancer_name, opts) do
     weights = Keyword.get(opts, :weights, %{})
-    CounterCache.insert_raw({{:weights, load_balancer_name}, weights})
+    ValueCache.put({load_balancer_name, :weights}, nil, weights)
     :ok
   end
 
@@ -32,7 +35,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.WeightedRoundRobin do
   def choose_from_nodes(load_balancer_name, node_list, _opts \\ []) do
     weights = get_weights(load_balancer_name)
     expanded = expand_node_list(node_list, weights)
-    count = increment_and_get(load_balancer_name)
+    count = CounterCache.get_and_increment(load_balancer_name, @counter_slot)
     _ = maybe_reset_count(load_balancer_name, count)
     Enum.at(expanded, rem(count - 1, length(expanded)))
   end
@@ -45,30 +48,15 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.WeightedRoundRobin do
   end
 
   defp get_weights(load_balancer_name) do
-    case CounterCache.lookup({:weights, load_balancer_name}) do
-      [{_key, weights}] -> weights
-      [] -> %{}
+    case ValueCache.get({load_balancer_name, :weights}) do
+      {:ok, nil} -> %{}
+      {:ok, weights} -> weights
     end
   end
 
   defp maybe_reset_count(load_balancer_name, count) when count > 10_000_000 do
-    _ =
-      CounterCache.update_counter(
-        {:weighted_counter, load_balancer_name},
-        {2, -count},
-        {{:weighted_counter, load_balancer_name}, 0}
-      )
-
-    :ok
+    CounterCache.reset_counter(load_balancer_name, @counter_slot)
   end
 
   defp maybe_reset_count(_load_balancer_name, _count), do: :ok
-
-  defp increment_and_get(load_balancer_name) do
-    CounterCache.update_counter(
-      {:weighted_counter, load_balancer_name},
-      {2, 1},
-      {{:weighted_counter, load_balancer_name}, 0}
-    )
-  end
 end

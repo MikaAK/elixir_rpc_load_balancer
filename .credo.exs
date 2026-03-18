@@ -48,7 +48,7 @@ allowed_imports = [
         {BlitzCredoChecks.NoDSLParentheses, []},
         {BlitzCredoChecks.NoIsBitstring, []},
         {BlitzCredoChecks.StrictComparison, []},
-        {BlitzCredoChecks.UseStream, []},
+        {BlitzCredoChecks.UseStream, false},
         {BlitzCredoChecks.LowercaseTestNames, []},
         {BlitzCredoChecks.ImproperImport, allowed_modules: allowed_imports},
 
@@ -145,4 +145,3 @@ allowed_imports = [
     }
   ]
 }
-

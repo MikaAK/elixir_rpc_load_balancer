@@ -5,6 +5,8 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.HashRingTest do
 
   setup context do
     name = :"hr_#{:erlang.unique_integer([:positive])}"
+    {:ok, _pid} = RpcLoadBalancer.start_link(name: name)
+    Process.sleep(100)
     HashRing.init(name, context[:algorithm_opts] || [])
     {:ok, name: name}
   end
