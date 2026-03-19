@@ -47,36 +47,43 @@ defmodule RpcLoadBalancer.LoadBalancerTest do
     end
   end
 
-  describe "lb_call/5" do
+  describe "call/5 with :load_balancer" do
     test "selects a node and executes an RPC call" do
       {:ok, _pid} = start_and_wait!(name: :test_call)
 
       assert {:ok, :hello} ===
-               RpcLoadBalancer.lb_call(:test_call, Kernel, :apply, [fn -> :hello end, []])
+               RpcLoadBalancer.call(node(), Kernel, :apply, [fn -> :hello end, []],
+                 load_balancer: :test_call
+               )
     end
 
     test "executes locally when call_directly? is true" do
       {:ok, _pid} = start_and_wait!(name: :test_call_direct)
 
       assert {:ok, :local} ===
-               RpcLoadBalancer.lb_call(:test_call_direct, Kernel, :apply, [fn -> :local end, []],
+               RpcLoadBalancer.call(node(), Kernel, :apply, [fn -> :local end, []],
+                 load_balancer: :test_call_direct,
                  call_directly?: true
                )
     end
   end
 
-  describe "lb_cast/5" do
+  describe "cast/5 with :load_balancer" do
     test "selects a node and executes an RPC cast" do
       {:ok, _pid} = start_and_wait!(name: :test_cast)
 
-      assert :ok === RpcLoadBalancer.lb_cast(:test_cast, Kernel, :apply, [fn -> :ok end, []])
+      assert :ok ===
+               RpcLoadBalancer.cast(node(), Kernel, :apply, [fn -> :ok end, []],
+                 load_balancer: :test_cast
+               )
     end
 
     test "executes locally when call_directly? is true" do
       {:ok, _pid} = start_and_wait!(name: :test_cast_direct)
 
       assert :ok ===
-               RpcLoadBalancer.lb_cast(:test_cast_direct, Kernel, :apply, [fn -> :ok end, []],
+               RpcLoadBalancer.cast(node(), Kernel, :apply, [fn -> :ok end, []],
+                 load_balancer: :test_cast_direct,
                  call_directly?: true
                )
     end

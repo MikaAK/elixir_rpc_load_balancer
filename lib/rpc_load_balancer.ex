@@ -19,6 +19,7 @@ defmodule RpcLoadBalancer do
 
   alias RpcLoadBalancer.LoadBalancer.Drainer
   alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm
+  alias RpcLoadBalancer.Retry
 
   @type name :: atom()
 
@@ -36,16 +37,14 @@ defmodule RpcLoadBalancer do
 
   @impl true
   def init(opts) do
-    name = Keyword.fetch!(opts, :name)
-
     children = [
       {Cache,
        [
          RpcLoadBalancer.LoadBalancer.AlgorithmCache,
-         RpcLoadBalancer.LoadBalancer.ValueCache
+         RpcLoadBalancer.LoadBalancer.ValueCache,
+         RpcLoadBalancer.LoadBalancer.DrainerCache,
+         RpcLoadBalancer.LoadBalancer.CounterCache
        ]},
-      RpcLoadBalancer.LoadBalancer.CounterCache.child_spec(name),
-      RpcLoadBalancer.LoadBalancer.DrainerCache.child_spec(name),
       {RpcLoadBalancer.LoadBalancer, opts}
     ]
 
@@ -85,8 +84,37 @@ defmodule RpcLoadBalancer do
     end
   end
 
-  @spec lb_call(name(), module(), atom(), [term()], keyword()) :: ErrorMessage.t_res(any())
-  def lb_call(load_balancer_name, module, fun, args, opts \\ []) do
+  # -------------------------------------------------------------------
+  # :erpc wrappers
+  # -------------------------------------------------------------------
+
+  @spec call(node(), module(), atom(), [any()], keyword()) :: ErrorMessage.t_res(any())
+  def call(node, module, fun, args, opts \\ [])
+
+  def call(node, module, fun, args, opts) when is_atom(node) do
+    load_balancer_name = Keyword.get(opts, :load_balancer)
+
+    if load_balancer_name do
+      lb_call(load_balancer_name, module, fun, args, opts)
+    else
+      erpc_call(node, module, fun, args, opts)
+    end
+  end
+
+  @spec cast(node(), module(), atom(), [term()], keyword()) :: :ok | {:error, ErrorMessage.t()}
+  def cast(node, module, fun, args, opts \\ [])
+
+  def cast(node, module, fun, args, opts) when is_atom(node) do
+    load_balancer_name = Keyword.get(opts, :load_balancer)
+
+    if load_balancer_name do
+      lb_cast(load_balancer_name, module, fun, args, opts)
+    else
+      erpc_cast(node, module, fun, args)
+    end
+  end
+
+  defp lb_call(load_balancer_name, module, fun, args, opts) do
     call_directly? = Keyword.get(opts, :call_directly?, RpcLoadBalancer.Config.call_directly?())
 
     if call_directly? do
@@ -96,26 +124,21 @@ defmodule RpcLoadBalancer do
         if SelectionAlgorithm.local?(algorithm) do
           {:ok, apply(module, fun, args)}
         else
-          {select_opts, call_opts} = Keyword.split(opts, [:key, :call_directly?])
+          {select_opts, call_opts} = Keyword.split(opts, [:key, :call_directly?, :load_balancer])
 
           with {:ok, selected_node} <- select_node(load_balancer_name, select_opts) do
-            Drainer.track_call(load_balancer_name)
-
-            try do
-              result = call(selected_node, module, fun, args, call_opts)
+            with_drainer(load_balancer_name, fn ->
+              result = erpc_call(selected_node, module, fun, args, call_opts)
               SelectionAlgorithm.release_node(algorithm, load_balancer_name, selected_node)
               result
-            after
-              Drainer.release_call(load_balancer_name)
-            end
+            end)
           end
         end
       end
     end
   end
 
-  @spec lb_cast(name(), module(), atom(), [term()], keyword()) :: :ok | {:error, ErrorMessage.t()}
-  def lb_cast(load_balancer_name, module, fun, args, opts \\ []) do
+  defp lb_cast(load_balancer_name, module, fun, args, opts) do
     call_directly? = Keyword.get(opts, :call_directly?, RpcLoadBalancer.Config.call_directly?())
 
     if call_directly? do
@@ -127,30 +150,21 @@ defmodule RpcLoadBalancer do
           spawn(module, fun, args)
           :ok
         else
-          {select_opts, _cast_opts} = Keyword.split(opts, [:key, :call_directly?])
+          {select_opts, _cast_opts} = Keyword.split(opts, [:key, :call_directly?, :load_balancer])
 
           with {:ok, selected_node} <- select_node(load_balancer_name, select_opts) do
-            Drainer.track_call(load_balancer_name)
-
-            try do
-              result = cast(selected_node, module, fun, args)
+            with_drainer(load_balancer_name, fn ->
+              result = erpc_cast(selected_node, module, fun, args)
               SelectionAlgorithm.release_node(algorithm, load_balancer_name, selected_node)
               result
-            after
-              Drainer.release_call(load_balancer_name)
-            end
+            end)
           end
         end
       end
     end
   end
 
-  # -------------------------------------------------------------------
-  # Low-level :erpc wrappers
-  # -------------------------------------------------------------------
-
-  @spec call(node(), module(), atom(), [any()], keyword()) :: ErrorMessage.t_res(any())
-  def call(node, module, fun, args, opts \\ []) do
+  defp erpc_call(node, module, fun, args, opts) do
     timeout = Keyword.get(opts, :timeout, :timer.seconds(10))
 
     try do
@@ -164,8 +178,7 @@ defmodule RpcLoadBalancer do
     end
   end
 
-  @spec cast(node(), module(), atom(), [term()]) :: :ok | {:error, ErrorMessage.t()}
-  def cast(node, module, fun, args) do
+  defp erpc_cast(node, module, fun, args) do
     :erpc.cast(node, module, fun, args)
   rescue
     e in ErlangError ->
@@ -183,34 +196,24 @@ defmodule RpcLoadBalancer do
           ErrorMessage.t_res(any())
   def call_on_random_node(node_filter, module, fun, args, opts \\ []) do
     call_directly? = Keyword.get(opts, :call_directly?, RpcLoadBalancer.Config.call_directly?())
+    load_balancer_name = Keyword.get(opts, :load_balancer)
 
     if call_directly? or current_node_matches_filter?(node_filter) do
       {:ok, apply(module, fun, args)}
     else
-      case filter_nodes(node_filter) do
-        [] ->
-          retry? = Keyword.get(opts, :retry?, RpcLoadBalancer.Config.retry?())
-          retry_count = Keyword.get(opts, :retry_count, RpcLoadBalancer.Config.retry_count())
+      Retry.with_retry(opts, fn ->
+        case filter_nodes(node_filter) do
+          [] ->
+            :retry
 
-          if retry? and retry_count > 0 do
-            Process.sleep(:timer.seconds(5))
-
-            opts
-            |> Keyword.put(:retry_count, retry_count - 1)
-            |> then(&call_on_random_node(node_filter, module, fun, args, &1))
-          else
-            {:error,
-             ErrorMessage.service_unavailable(
-               "no nodes in cluster found with that filter",
-               %{node_filter: node_filter}
-             )}
-          end
-
-        node_list ->
-          node_list
-          |> Enum.random()
-          |> call(module, fun, args, Keyword.take(opts, [:timeout]))
-      end
+          node_list ->
+            selected_node = Enum.random(node_list)
+            with_drainer(load_balancer_name, fn ->
+              call(selected_node, module, fun, args, Keyword.take(opts, [:timeout]))
+            end)
+        end
+      end)
+      |> no_nodes_error(node_filter)
     end
   end
 
@@ -218,35 +221,25 @@ defmodule RpcLoadBalancer do
           :ok | {:error, ErrorMessage.t()}
   def cast_on_random_node(node_filter, module, fun, args, opts \\ []) do
     call_directly? = Keyword.get(opts, :call_directly?, RpcLoadBalancer.Config.call_directly?())
+    load_balancer_name = Keyword.get(opts, :load_balancer)
 
     if call_directly? or current_node_matches_filter?(node_filter) do
       spawn(module, fun, args)
       :ok
     else
-      case filter_nodes(node_filter) do
-        [] ->
-          retry? = Keyword.get(opts, :retry?, RpcLoadBalancer.Config.retry?())
-          retry_count = Keyword.get(opts, :retry_count, RpcLoadBalancer.Config.retry_count())
+      Retry.with_retry(opts, fn ->
+        case filter_nodes(node_filter) do
+          [] ->
+            :retry
 
-          if retry? and retry_count > 0 do
-            Process.sleep(:timer.seconds(5))
-
-            opts
-            |> Keyword.put(:retry_count, retry_count - 1)
-            |> then(&cast_on_random_node(node_filter, module, fun, args, &1))
-          else
-            {:error,
-             ErrorMessage.service_unavailable(
-               "no nodes in cluster found with that filter",
-               %{node_filter: node_filter}
-             )}
-          end
-
-        node_list ->
-          node_list
-          |> Enum.random()
-          |> cast(module, fun, args)
-      end
+          node_list ->
+            selected_node = Enum.random(node_list)
+            with_drainer(load_balancer_name, fn ->
+              cast(selected_node, module, fun, args)
+            end)
+        end
+      end)
+      |> no_nodes_error(node_filter)
     end
   end
 
@@ -269,6 +262,28 @@ defmodule RpcLoadBalancer do
   defp erlang_error_to_error_message(%ErlangError{} = error, _node) do
     ErrorMessage.service_unavailable("unavailable", %{details: error})
   end
+
+  defp with_drainer(nil, fun), do: fun.()
+
+  defp with_drainer(load_balancer_name, fun) do
+    Drainer.track_call(load_balancer_name)
+
+    try do
+      fun.()
+    after
+      Drainer.release_call(load_balancer_name)
+    end
+  end
+
+  defp no_nodes_error(:error, node_filter) do
+    {:error,
+     ErrorMessage.service_unavailable(
+       "no nodes in cluster found with that filter",
+       %{node_filter: node_filter}
+     )}
+  end
+
+  defp no_nodes_error(result, _node_filter), do: result
 
   defp filter_nodes(node_filter) do
     Enum.filter(Node.list(), &(to_string(&1) =~ node_filter))

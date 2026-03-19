@@ -61,7 +61,9 @@ defmodule RpcLoadBalancerTest do
         Process.sleep(100)
 
         assert {:ok, :integration_result} ===
-                 RpcLoadBalancer.lb_call(lb_name, Kernel, :apply, [fn -> :integration_result end, []])
+                 RpcLoadBalancer.call(node(), Kernel, :apply, [fn -> :integration_result end, []],
+                   load_balancer: lb_name
+                 )
       end
 
       test "#{short_name} cast executes on a selected node" do
@@ -76,7 +78,10 @@ defmodule RpcLoadBalancerTest do
 
         Process.sleep(100)
 
-        assert :ok === RpcLoadBalancer.lb_cast(lb_name, Kernel, :apply, [fn -> :ok end, []])
+        assert :ok ===
+                 RpcLoadBalancer.cast(node(), Kernel, :apply, [fn -> :ok end, []],
+                   load_balancer: lb_name
+                 )
       end
 
       test "#{short_name} get_members returns current node" do
@@ -105,11 +110,8 @@ defmodule RpcLoadBalancerTest do
       Process.sleep(100)
 
       assert {:ok, :direct_result} ===
-               RpcLoadBalancer.lb_call(
-                 :integration_call_direct_call,
-                 Kernel,
-                 :apply,
-                 [fn -> :direct_result end, []]
+               RpcLoadBalancer.call(node(), Kernel, :apply, [fn -> :direct_result end, []],
+                 load_balancer: :integration_call_direct_call
                )
     end
 
@@ -125,11 +127,8 @@ defmodule RpcLoadBalancerTest do
       Process.sleep(100)
 
       assert :ok ===
-               RpcLoadBalancer.lb_cast(
-                 :integration_call_direct_cast,
-                 Kernel,
-                 :apply,
-                 [fn -> send(test_pid, :cast_executed) end, []]
+               RpcLoadBalancer.cast(node(), Kernel, :apply, [fn -> send(test_pid, :cast_executed) end, []],
+                 load_balancer: :integration_call_direct_cast
                )
 
       assert_receive :cast_executed, 1000

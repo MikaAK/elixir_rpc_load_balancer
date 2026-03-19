@@ -1,11 +1,11 @@
 defmodule RpcLoadBalancer.LoadBalancer.DrainerTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias RpcLoadBalancer.LoadBalancer.Drainer
   alias RpcLoadBalancer.LoadBalancer.DrainerCache
 
   defp start_drainer!(name) do
-    start_supervised!(DrainerCache.child_spec(name))
+    start_supervised!({Cache, [DrainerCache]})
     Process.sleep(50)
     name
   end
