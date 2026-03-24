@@ -40,6 +40,7 @@ defmodule RpcLoadBalancer do
     children = [
       {Cache,
        [
+         RpcLoadBalancer.LoadBalancer.IndexRegistry,
          RpcLoadBalancer.LoadBalancer.AlgorithmCache,
          RpcLoadBalancer.LoadBalancer.ValueCache,
          RpcLoadBalancer.LoadBalancer.DrainerCache,
@@ -201,7 +202,7 @@ defmodule RpcLoadBalancer do
     if call_directly? or current_node_matches_filter?(node_filter) do
       {:ok, apply(module, fun, args)}
     else
-      Retry.with_retry(opts, fn ->
+      no_nodes_error(Retry.with_retry(opts, fn ->
         case filter_nodes(node_filter) do
           [] ->
             :retry
@@ -212,8 +213,7 @@ defmodule RpcLoadBalancer do
               call(selected_node, module, fun, args, Keyword.take(opts, [:timeout]))
             end)
         end
-      end)
-      |> no_nodes_error(node_filter)
+      end), node_filter)
     end
   end
 
@@ -227,7 +227,7 @@ defmodule RpcLoadBalancer do
       spawn(module, fun, args)
       :ok
     else
-      Retry.with_retry(opts, fn ->
+      no_nodes_error(Retry.with_retry(opts, fn ->
         case filter_nodes(node_filter) do
           [] ->
             :retry
@@ -238,8 +238,7 @@ defmodule RpcLoadBalancer do
               cast(selected_node, module, fun, args)
             end)
         end
-      end)
-      |> no_nodes_error(node_filter)
+      end), node_filter)
     end
   end
 
@@ -266,12 +265,13 @@ defmodule RpcLoadBalancer do
   defp with_drainer(nil, fun), do: fun.()
 
   defp with_drainer(load_balancer_name, fun) do
-    Drainer.track_call(load_balancer_name)
+    drainer_index = Drainer.register(load_balancer_name)
+    Drainer.track_call(drainer_index)
 
     try do
       fun.()
     after
-      Drainer.release_call(load_balancer_name)
+      Drainer.release_call(drainer_index)
     end
   end
 

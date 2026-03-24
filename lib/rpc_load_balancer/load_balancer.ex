@@ -17,7 +17,8 @@ defmodule RpcLoadBalancer.LoadBalancer do
            name: atom(),
            algorithm_opts: keyword(),
            pg_ref: reference() | nil,
-           drain_timeout: timeout()
+           drain_timeout: timeout(),
+           drainer_index: non_neg_integer() | nil
          }
 
   @spec start_link(keyword()) :: GenServer.on_start()
@@ -36,7 +37,8 @@ defmodule RpcLoadBalancer.LoadBalancer do
       name: name,
       algorithm_opts: algorithm_opts,
       pg_ref: nil,
-      drain_timeout: drain_timeout
+      drain_timeout: drain_timeout,
+      drainer_index: nil
     }
 
     GenServer.start_link(__MODULE__, init_state, name: :"#{name}_server")
@@ -51,6 +53,13 @@ defmodule RpcLoadBalancer.LoadBalancer do
 
   @impl true
   def handle_continue(:register, state) do
+    alias RpcLoadBalancer.LoadBalancer.IndexRegistry
+
+    IndexRegistry.init_counter(:rpc_lb_drainer_cache)
+    IndexRegistry.init_counter(:rpc_lb_counter_cache)
+
+    drainer_index = Drainer.register(state.name)
+
     :ok = SelectionAlgorithm.put_algorithm(state.name, state.algorithm)
     :ok = SelectionAlgorithm.init(state.algorithm, state.name, state.algorithm_opts)
 
@@ -60,7 +69,7 @@ defmodule RpcLoadBalancer.LoadBalancer do
 
     pg_ref = monitor_pg_group(state.name)
 
-    {:noreply, %{state | pg_ref: pg_ref}}
+    {:noreply, %{state | pg_ref: pg_ref, drainer_index: drainer_index}}
   end
 
   @impl true
@@ -88,11 +97,12 @@ defmodule RpcLoadBalancer.LoadBalancer do
       end
     end
 
-    try do
-      Drainer.drain(state.name, state.drain_timeout)
-    catch
-      _, _ -> :ok
-    end
+    _result =
+      try do
+        Drainer.drain(state.drainer_index, state.drain_timeout)
+      catch
+        _, _ -> :ok
+      end
 
     :ok
   end

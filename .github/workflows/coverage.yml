@@ -35,8 +35,8 @@ jobs:
           path: |
                 _build
                 deps
-          key: ${{ github.ref }}-coverage-v1-${{ hashFiles('**/mix.lock') }}-${{ hashFiles('./.tool-versions') }}
-          restore-keys: ${{ github.ref }}-coverage-v1-${{ hashFiles('**/mix.lock') }}-${{ hashFiles('./.tool-versions') }}
+          key: ${{ github.ref }}-coverage-v1-${{ hashFiles('./mix.lock') }}-${{ hashFiles('./.tool-versions') }}
+          restore-keys: ${{ github.ref }}-coverage-v1-${{ hashFiles('./mix.lock') }}-${{ hashFiles('./.tool-versions') }}
 
       - name: Remove app/* from _build/{test,prod,dev}/lib # This forces just our apps to recompile every time
         run: rm -rf _build/{test,prod,dev}/lib/$(ls apps)

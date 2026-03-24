@@ -13,39 +13,44 @@ defmodule RpcLoadBalancer.LoadBalancer.Drainer do
   @default_drain_timeout :timer.seconds(15)
   @poll_interval_ms 50
 
-  @spec track_call(atom()) :: :ok
-  def track_call(load_balancer_name) do
-    DrainerCache.increment(load_balancer_name)
+  @spec register(atom()) :: non_neg_integer()
+  def register(load_balancer_name) do
+    DrainerCache.register(load_balancer_name)
   end
 
-  @spec release_call(atom()) :: :ok
-  def release_call(load_balancer_name) do
-    DrainerCache.decrement(load_balancer_name)
+  @spec track_call(non_neg_integer()) :: :ok
+  def track_call(drainer_index) do
+    DrainerCache.increment(drainer_index)
   end
 
-  @spec in_flight_count(atom()) :: non_neg_integer()
-  def in_flight_count(load_balancer_name) do
-    DrainerCache.count(load_balancer_name)
+  @spec release_call(non_neg_integer()) :: :ok
+  def release_call(drainer_index) do
+    DrainerCache.decrement(drainer_index)
   end
 
-  @spec drain(atom(), timeout()) :: :ok | {:error, :timeout}
-  def drain(load_balancer_name, timeout \\ @default_drain_timeout) do
+  @spec in_flight_count(non_neg_integer()) :: non_neg_integer()
+  def in_flight_count(drainer_index) do
+    DrainerCache.count(drainer_index)
+  end
+
+  @spec drain(non_neg_integer(), timeout()) :: :ok | {:error, :timeout}
+  def drain(drainer_index, timeout \\ @default_drain_timeout) do
     deadline = compute_deadline(timeout)
-    await_drain(load_balancer_name, deadline)
+    await_drain(drainer_index, deadline)
   end
 
   defp compute_deadline(:infinity), do: :infinity
   defp compute_deadline(timeout), do: System.monotonic_time(:millisecond) + timeout
 
-  defp await_drain(load_balancer_name, deadline) do
-    if in_flight_count(load_balancer_name) <= 0 do
+  defp await_drain(drainer_index, deadline) do
+    if in_flight_count(drainer_index) <= 0 do
       :ok
     else
       if deadline !== :infinity and System.monotonic_time(:millisecond) >= deadline do
         {:error, :timeout}
       else
         Process.sleep(@poll_interval_ms)
-        await_drain(load_balancer_name, deadline)
+        await_drain(drainer_index, deadline)
       end
     end
   end

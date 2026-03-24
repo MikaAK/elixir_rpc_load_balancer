@@ -4,43 +4,56 @@ defmodule RpcLoadBalancer.LoadBalancer.CounterCache do
   per-node connection tracking across all load balancers.
   """
 
+  alias RpcLoadBalancer.LoadBalancer.IndexRegistry
+
+  @cache_name :rpc_lb_counter_cache
+
   use Cache,
     adapter: Cache.Counter,
-    name: :rpc_lb_counter_cache,
+    name: @cache_name,
     sandbox?: false,
     opts: [initial_size: 1024]
 
-  @spec get_and_increment(atom(), pos_integer()) :: integer()
-  def get_and_increment(load_balancer_name, index) do
-    key = {:slot, load_balancer_name, index}
-    :ok = increment(key)
-    {:ok, count} = get(key)
-    count
+  @spec register(atom(), pos_integer()) :: non_neg_integer()
+  def register(load_balancer_name, slot_id) do
+    IndexRegistry.get_or_register(@cache_name, {:slot, load_balancer_name, slot_id})
   end
 
-  @spec reset_counter(atom(), pos_integer()) :: :ok
-  def reset_counter(load_balancer_name, index) do
-    delete({:slot, load_balancer_name, index})
+  @spec get_and_increment(non_neg_integer()) :: non_neg_integer()
+  def get_and_increment(index) do
+    :ok = increment(index)
+    {:ok, count} = get(index)
+    count || 0
+  end
+
+  @spec reset_counter(non_neg_integer()) :: :ok
+  def reset_counter(index) do
+    delete(index)
+  end
+
+  @spec register_node(atom(), node()) :: non_neg_integer()
+  def register_node(load_balancer_name, node) do
+    IndexRegistry.get_or_register(@cache_name, {:conn, load_balancer_name, node})
   end
 
   @spec increment_node(atom(), node()) :: :ok
   def increment_node(load_balancer_name, node) do
-    increment({:conn, load_balancer_name, node})
+    increment(register_node(load_balancer_name, node))
   end
 
   @spec decrement_node(atom(), node()) :: :ok
   def decrement_node(load_balancer_name, node) do
-    decrement({:conn, load_balancer_name, node})
+    decrement(register_node(load_balancer_name, node))
   end
 
-  @spec get_node_count(atom(), node()) :: integer()
+  @spec get_node_count(atom(), node()) :: non_neg_integer()
   def get_node_count(load_balancer_name, node) do
-    {:ok, count} = get({:conn, load_balancer_name, node})
-    count
+    {:ok, count} = get(register_node(load_balancer_name, node))
+    count || 0
   end
 
   @spec erase_node_counter(atom(), node()) :: :ok
   def erase_node_counter(load_balancer_name, node) do
-    delete({:conn, load_balancer_name, node})
+    delete(register_node(load_balancer_name, node))
   end
 end

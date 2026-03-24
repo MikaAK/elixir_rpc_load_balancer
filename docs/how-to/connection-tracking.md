@@ -8,7 +8,7 @@ The Least Connections and Power of Two algorithms track active connection counts
 alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm
 
 {:ok, _pid} =
-  RpcLoadBalancer.LoadBalancer.start_link(
+  RpcLoadBalancer.start_link(
     name: :lc_balancer,
     selection_algorithm: SelectionAlgorithm.LeastConnections
   )
@@ -24,26 +24,29 @@ When `choose_from_nodes/3` runs, it:
 
 When the call finishes, the counter must be decremented.
 
-## Automatic release with the convenience API
+## Automatic release with call/5
 
-`LoadBalancer.call/5` handles this for you. After the RPC completes (success or failure), it calls `release_node/2` to decrement the counter:
+When you use `call/5` with the `:load_balancer` option, the library handles counter management for you. After the RPC completes (success or failure), it calls the algorithm's `release_node/2` to decrement the counter:
 
 ```elixir
 {:ok, result} =
-  RpcLoadBalancer.LoadBalancer.call(:lc_balancer, MyModule, :work, [arg])
+  RpcLoadBalancer.call(node(), MyModule, :work, [arg], load_balancer: :lc_balancer)
 ```
 
 ## Manual release with select_node
 
-If you use `select_node/2` directly, you are responsible for releasing the node:
+If you use `select_node/2` directly, you are responsible for releasing the node through the algorithm:
 
 ```elixir
-{:ok, selected} = RpcLoadBalancer.LoadBalancer.select_node(:lc_balancer)
+alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm
+
+{:ok, selected} = RpcLoadBalancer.select_node(:lc_balancer)
+{:ok, algorithm} = SelectionAlgorithm.get_algorithm(:lc_balancer)
 
 try do
   {:ok, :erpc.call(selected, MyModule, :work, [arg])}
 after
-  RpcLoadBalancer.LoadBalancer.release_node(:lc_balancer, selected)
+  SelectionAlgorithm.release_node(algorithm, :lc_balancer, selected)
 end
 ```
 
@@ -55,19 +58,19 @@ Power of Two works identically but samples only two random nodes instead of scan
 
 ```elixir
 {:ok, _pid} =
-  RpcLoadBalancer.LoadBalancer.start_link(
+  RpcLoadBalancer.start_link(
     name: :p2c_balancer,
     selection_algorithm: SelectionAlgorithm.PowerOfTwo
   )
 ```
 
-The same release semantics apply — `LoadBalancer.call/5` handles it automatically, `select_node/2` requires manual `release_node/2`.
+The same release semantics apply — `call/5` with `:load_balancer` handles it automatically, `select_node/2` requires manual release.
 
 ## Node lifecycle
 
 Both algorithms implement `on_node_change/2`:
 
-- **Join** — initializes a zero counter for the new node
-- **Leave** — deletes the counter entry for the departed node
+- **Join** — no-op (counters start at zero implicitly)
+- **Leave** — erases the counter entry for the departed node
 
 This happens automatically when the `:pg` group membership changes.

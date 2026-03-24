@@ -4,12 +4,15 @@ An Elixir library for executing Remote Procedure Calls across distributed BEAM n
 
 ## Features
 
-- **RPC wrappers** — `call/5` and `cast/4` around `:erpc` with `ErrorMessage` error tuples
+- **RPC wrappers** — `call/5` and `cast/5` around `:erpc` with `ErrorMessage` error tuples
 - **Distributed load balancer** — automatic node discovery and registration via `:pg`
 - **Seven selection algorithms** — Random, Round Robin, Least Connections, Power of Two, Hash Ring, Weighted Round Robin, Call Direct
 - **Custom algorithms** — implement the `SelectionAlgorithm` behaviour to add your own
 - **Node filtering** — restrict which nodes join a balancer with string or regex patterns
-- **Connection tracking** — ETS-backed atomic counters for connection-aware algorithms
+- **Connection tracking** — atomic counters for connection-aware algorithms
+- **Random-node helpers** — `call_on_random_node/5` and `cast_on_random_node/5` for name-based node filtering with built-in retry
+- **Graceful draining** — in-flight call tracking and connection draining on shutdown
+- **Configurable retry** — automatic retry with configurable count and sleep when no nodes are available
 
 ## Installation
 
@@ -35,8 +38,16 @@ end
     timeout: :timer.seconds(5)
   )
 
-{:ok, _pid} = RpcLoadBalancer.LoadBalancer.start_link(name: :my_balancer)
-{:ok, result} = RpcLoadBalancer.LoadBalancer.call(:my_balancer, MyModule, :my_fun, [arg])
+{:ok, _pid} = RpcLoadBalancer.start_link(name: :my_balancer)
+
+{:ok, result} =
+  RpcLoadBalancer.call(
+    :"worker@host",
+    MyModule,
+    :my_fun,
+    [arg],
+    load_balancer: :my_balancer
+  )
 ```
 
 ## Documentation

@@ -33,7 +33,7 @@ Fetch the dependency:
 mix deps.get
 ```
 
-The application starts automatically. It boots a `:pg` process group and two ETS caches that the load balancer needs.
+The application starts automatically. It boots a `:pg` process group and the caches that load balancers need.
 
 ## Step 2: Make a direct RPC call
 
@@ -57,7 +57,7 @@ The `call/5` function wraps `:erpc.call/5` and returns `{:ok, result}` on succes
 {:ok, result} = RpcLoadBalancer.call(node(), String, :upcase, ["hello"], timeout: :timer.seconds(5))
 ```
 
-For fire-and-forget calls, use `cast/4`:
+For fire-and-forget calls, use `cast/5`:
 
 ```elixir
 :ok = RpcLoadBalancer.cast(node(), IO, :puts, ["hello from cast"])
@@ -65,34 +65,36 @@ For fire-and-forget calls, use `cast/4`:
 
 ## Step 3: Start a load balancer
 
-Now start a load balancer instance. Each balancer is a GenServer that registers the current node in a `:pg` group:
+Now start a load balancer instance. `RpcLoadBalancer.start_link/1` starts a Supervisor that manages the caches and GenServer for a single balancer. The GenServer registers the current node in a `:pg` group:
 
 ```elixir
-{:ok, _pid} = RpcLoadBalancer.LoadBalancer.start_link(name: :my_balancer)
+{:ok, _pid} = RpcLoadBalancer.start_link(name: :my_balancer)
 ```
 
 The balancer uses the `Random` algorithm by default. Verify it's running by selecting a node:
 
 ```elixir
-{:ok, selected} = RpcLoadBalancer.LoadBalancer.select_node(:my_balancer)
+{:ok, selected} = RpcLoadBalancer.select_node(:my_balancer)
 ```
 
 Since you're running a single node, `selected` will be your current node.
 
-## Step 4: Use the convenience API
+## Step 4: Make load-balanced RPC calls
 
-Instead of selecting a node and making the RPC call separately, combine both in one step:
+Pass the `:load_balancer` option to `call/5` or `cast/5` to route through the balancer. The library selects a node using the configured algorithm, executes the RPC call, and returns the result:
 
 ```elixir
 {:ok, result} =
-  RpcLoadBalancer.LoadBalancer.call(:my_balancer, String, :reverse, ["hello"])
+  RpcLoadBalancer.call(node(), String, :reverse, ["hello"], load_balancer: :my_balancer)
 ```
 
-This selects a node using the configured algorithm, executes the RPC call on that node, and returns the result. There's also a `cast/5` variant:
+For fire-and-forget:
 
 ```elixir
-:ok = RpcLoadBalancer.LoadBalancer.cast(:my_balancer, IO, :puts, ["load balanced cast"])
+:ok = RpcLoadBalancer.cast(node(), IO, :puts, ["load balanced cast"], load_balancer: :my_balancer)
 ```
+
+When the `:load_balancer` option is present, the first argument (node) is ignored — the balancer selects the target node for you.
 
 ## Step 5: Choose a selection algorithm
 
@@ -102,19 +104,19 @@ Start a second load balancer with Round Robin:
 alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm
 
 {:ok, _pid} =
-  RpcLoadBalancer.LoadBalancer.start_link(
+  RpcLoadBalancer.start_link(
     name: :round_robin_balancer,
     selection_algorithm: SelectionAlgorithm.RoundRobin
   )
 ```
 
-Round Robin cycles through nodes in order using an atomic ETS counter, which makes it deterministic and fair under uniform workloads.
+Round Robin cycles through nodes in order using an atomic counter, which makes it deterministic and fair under uniform workloads.
 
 Try selecting nodes multiple times:
 
 ```elixir
-{:ok, node1} = RpcLoadBalancer.LoadBalancer.select_node(:round_robin_balancer)
-{:ok, node2} = RpcLoadBalancer.LoadBalancer.select_node(:round_robin_balancer)
+{:ok, node1} = RpcLoadBalancer.select_node(:round_robin_balancer)
+{:ok, node2} = RpcLoadBalancer.select_node(:round_robin_balancer)
 ```
 
 With a single node both will return the same value, but in a multi-node cluster you'll see them cycle through the available nodes.
@@ -132,8 +134,7 @@ defmodule MyApp.Application do
     children = [
       MyApp.Repo,
       MyAppWeb.Endpoint,
-      # Load balancer last — shuts down first
-      {RpcLoadBalancer.LoadBalancer,
+      {RpcLoadBalancer,
        name: :my_balancer,
        selection_algorithm: RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.RoundRobin}
     ]
@@ -143,13 +144,14 @@ defmodule MyApp.Application do
 end
 ```
 
-The balancer will start, register the current node in the `:pg` group, and begin monitoring for node joins and leaves. On shutdown, the GenServer exits, which removes it from the `:pg` group instantly — other nodes stop routing traffic here before the rest of the application tears down.
+The balancer will start, register the current node in the `:pg` group, and begin monitoring for node joins and leaves. On shutdown, it performs graceful connection draining — waiting for in-flight calls to complete (up to 15 seconds by default) before the process terminates. This ensures the node deregisters from the `:pg` group and finishes ongoing work before the rest of the application tears down.
 
 ## What you've learned
 
-- `RpcLoadBalancer.call/5` and `cast/4` wrap `:erpc` with structured error handling
-- `LoadBalancer.start_link/1` creates a named balancer backed by `:pg`
-- `LoadBalancer.call/5` and `cast/5` combine node selection with RPC execution
+- `RpcLoadBalancer.call/5` and `cast/5` wrap `:erpc` with structured error handling
+- `RpcLoadBalancer.start_link/1` creates a named balancer backed by `:pg`
+- Passing `load_balancer: :name` to `call/5` or `cast/5` routes through the balancer
+- `RpcLoadBalancer.select_node/2` selects a node without making an RPC call
 - Selection algorithms are swappable via the `:selection_algorithm` option
 - Balancers belong in your application's supervision tree
 

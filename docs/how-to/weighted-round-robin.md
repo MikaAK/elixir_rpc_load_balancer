@@ -10,7 +10,7 @@ Pass a weight map via `algorithm_opts`. Keys are node atoms, values are positive
 alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm
 
 {:ok, _pid} =
-  RpcLoadBalancer.LoadBalancer.start_link(
+  RpcLoadBalancer.start_link(
     name: :weighted_balancer,
     selection_algorithm: SelectionAlgorithm.WeightedRoundRobin,
     algorithm_opts: [weights: %{:"node1@host" => 3, :"node2@host" => 1}]
@@ -37,7 +37,7 @@ The algorithm expands the node list by duplicating each node according to its we
 
 ```elixir
 children = [
-  {RpcLoadBalancer.LoadBalancer,
+  {RpcLoadBalancer,
    name: :weighted_balancer,
    selection_algorithm: SelectionAlgorithm.WeightedRoundRobin,
    algorithm_opts: [

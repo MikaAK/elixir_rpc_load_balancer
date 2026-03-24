@@ -1,17 +1,16 @@
 # How to Test with the CallDirect Strategy
 
-When testing code that uses `RpcLoadBalancer.LoadBalancer`, you typically don't have a multi-node cluster available. The `CallDirect` selection algorithm solves this by executing calls locally via `apply/3` instead of going through `:erpc`.
+When testing code that uses `RpcLoadBalancer`, you typically don't have a multi-node cluster available. The `CallDirect` selection algorithm solves this by executing calls locally via `apply/3` instead of going through `:erpc`.
 
 ## Configure your load balancer for tests
 
 Pass `SelectionAlgorithm.CallDirect` as the selection algorithm when starting a load balancer in your test setup:
 
 ```elixir
-alias RpcLoadBalancer.LoadBalancer
 alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm
 
 {:ok, _pid} =
-  LoadBalancer.start_link(
+  RpcLoadBalancer.start_link(
     name: :my_balancer,
     selection_algorithm: SelectionAlgorithm.CallDirect
   )
@@ -19,8 +18,8 @@ alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm
 
 With `CallDirect` active:
 
-- `LoadBalancer.call/5` executes `apply(module, fun, args)` and returns `{:ok, result}`
-- `LoadBalancer.cast/5` executes `spawn(module, fun, args)` and returns `:ok`
+- `call/5` with `load_balancer: :name` executes `apply(module, fun, args)` and returns `{:ok, result}`
+- `cast/5` with `load_balancer: :name` executes `spawn(module, fun, args)` and returns `:ok`
 - No `:erpc` calls are made
 - No cluster nodes are required
 
@@ -32,36 +31,38 @@ A typical test module that depends on a load balancer:
 defmodule MyApp.WorkerTest do
   use ExUnit.Case, async: true
 
-  alias RpcLoadBalancer.LoadBalancer
   alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm
 
   setup do
     lb_name = :"test_lb_#{System.unique_integer([:positive])}"
 
     {:ok, _pid} =
-      LoadBalancer.start_link(
+      RpcLoadBalancer.start_link(
         name: lb_name,
         selection_algorithm: SelectionAlgorithm.CallDirect
       )
 
-    # Allow the GenServer to finish registration
     Process.sleep(50)
 
     %{lb_name: lb_name}
   end
 
   test "call executes the function", %{lb_name: lb_name} do
-    assert {:ok, 42} === LoadBalancer.call(lb_name, Kernel, :+, [40, 2])
+    assert {:ok, 42} ===
+             RpcLoadBalancer.call(node(), Kernel, :+, [40, 2], load_balancer: lb_name)
   end
 
   test "cast fires asynchronously", %{lb_name: lb_name} do
     test_pid = self()
 
     assert :ok ===
-             LoadBalancer.cast(lb_name, Kernel, :apply, [
-               fn -> send(test_pid, :done) end,
-               []
-             ])
+             RpcLoadBalancer.cast(
+               node(),
+               Kernel,
+               :apply,
+               [fn -> send(test_pid, :done) end, []],
+               load_balancer: lb_name
+             )
 
     assert_receive :done, 1000
   end
@@ -83,7 +84,7 @@ defmodule MyApp.Application do
   @impl true
   def start(_type, _args) do
     children = [
-      {RpcLoadBalancer.LoadBalancer,
+      {RpcLoadBalancer,
        name: :my_balancer,
        selection_algorithm: @selection_algorithm}
     ]

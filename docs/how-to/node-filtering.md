@@ -8,7 +8,7 @@ Pass a list of node name strings. Only nodes whose name matches one of the strin
 
 ```elixir
 {:ok, _pid} =
-  RpcLoadBalancer.LoadBalancer.start_link(
+  RpcLoadBalancer.start_link(
     name: :filtered_balancer,
     node_match_list: ["worker1@host", "worker2@host"]
   )
@@ -22,7 +22,7 @@ Use `Regex` patterns for flexible matching:
 
 ```elixir
 {:ok, _pid} =
-  RpcLoadBalancer.LoadBalancer.start_link(
+  RpcLoadBalancer.start_link(
     name: :worker_balancer,
     node_match_list: [~r/^worker/]
   )
@@ -36,7 +36,7 @@ The match list accepts both types. A node joins if it matches any entry:
 
 ```elixir
 {:ok, _pid} =
-  RpcLoadBalancer.LoadBalancer.start_link(
+  RpcLoadBalancer.start_link(
     name: :mixed_balancer,
     node_match_list: ["primary@host", ~r/^replica/]
   )
@@ -48,7 +48,7 @@ Passing `:all` (or omitting the option) allows every node to join:
 
 ```elixir
 {:ok, _pid} =
-  RpcLoadBalancer.LoadBalancer.start_link(
+  RpcLoadBalancer.start_link(
     name: :open_balancer,
     node_match_list: :all
   )

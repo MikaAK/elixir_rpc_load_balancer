@@ -61,7 +61,7 @@ end
 
 ### `release_node/2`
 
-Called after an RPC call completes when using the convenience `LoadBalancer.call/5` API. Connection-tracking algorithms use this to decrement counters:
+Called after an RPC call completes when using `call/5` with the `:load_balancer` option. Connection-tracking algorithms use this to decrement counters:
 
 ```elixir
 @impl true
@@ -77,7 +77,7 @@ Pass it as the `:selection_algorithm` option when starting a load balancer:
 
 ```elixir
 {:ok, _pid} =
-  RpcLoadBalancer.LoadBalancer.start_link(
+  RpcLoadBalancer.start_link(
     name: :priority_balancer,
     selection_algorithm: MyApp.PriorityAlgorithm
   )
@@ -87,7 +87,7 @@ Pass custom options through `select_node/2` or `call/5`:
 
 ```elixir
 {:ok, node} =
-  RpcLoadBalancer.LoadBalancer.select_node(:priority_balancer, priority_node: :"preferred@host")
+  RpcLoadBalancer.select_node(:priority_balancer, priority_node: :"preferred@host")
 ```
 
 ## Use algorithm_opts for initialization
@@ -96,7 +96,7 @@ If your algorithm needs configuration at startup, pass it via `:algorithm_opts`:
 
 ```elixir
 {:ok, _pid} =
-  RpcLoadBalancer.LoadBalancer.start_link(
+  RpcLoadBalancer.start_link(
     name: :custom_balancer,
     selection_algorithm: MyApp.PriorityAlgorithm,
     algorithm_opts: [initial: 100]

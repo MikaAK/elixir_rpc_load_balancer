@@ -27,6 +27,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.WeightedRoundRobin do
   @impl true
   def init(load_balancer_name, opts) do
     weights = Keyword.get(opts, :weights, %{})
+    CounterCache.register(load_balancer_name, @counter_slot)
     ValueCache.put({load_balancer_name, :weights}, nil, weights)
     :ok
   end
@@ -35,8 +36,9 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.WeightedRoundRobin do
   def choose_from_nodes(load_balancer_name, node_list, _opts \\ []) do
     weights = get_weights(load_balancer_name)
     expanded = expand_node_list(node_list, weights)
-    count = CounterCache.get_and_increment(load_balancer_name, @counter_slot)
-    _ = maybe_reset_count(load_balancer_name, count)
+    index = CounterCache.register(load_balancer_name, @counter_slot)
+    count = CounterCache.get_and_increment(index)
+    _ = maybe_reset_count(index, count)
     Enum.at(expanded, rem(count - 1, length(expanded)))
   end
 
@@ -54,9 +56,9 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.WeightedRoundRobin do
     end
   end
 
-  defp maybe_reset_count(load_balancer_name, count) when count > 10_000_000 do
-    CounterCache.reset_counter(load_balancer_name, @counter_slot)
+  defp maybe_reset_count(index, count) when count > 10_000_000 do
+    CounterCache.reset_counter(index)
   end
 
-  defp maybe_reset_count(_load_balancer_name, _count), do: :ok
+  defp maybe_reset_count(_index, _count), do: :ok
 end

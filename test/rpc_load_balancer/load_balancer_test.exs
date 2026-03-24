@@ -104,11 +104,12 @@ defmodule RpcLoadBalancer.LoadBalancerTest do
     test "drains in-flight calls before stopping" do
       {:ok, _pid} = start_and_wait!(name: :test_terminate_drain)
 
-      Drainer.track_call(:test_terminate_drain)
+      drainer_index = Drainer.register(:test_terminate_drain)
+      Drainer.track_call(drainer_index)
 
       Task.start(fn ->
         Process.sleep(100)
-        Drainer.release_call(:test_terminate_drain)
+        Drainer.release_call(drainer_index)
       end)
 
       Supervisor.stop(:test_terminate_drain)
