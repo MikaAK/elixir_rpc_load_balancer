@@ -36,7 +36,7 @@ defmodule RpcLoadBalancer.MixProject do
 
   def application do
     [
-      extra_applications: [:logger],
+      extra_applications: [:logger, :os_mon],
       mod: {RpcLoadBalancer.Application, []}
     ]
   end

@@ -51,8 +51,7 @@ defmodule RpcLoadBalancer do
            RpcLoadBalancer.LoadBalancer.AlgorithmCache,
            RpcLoadBalancer.LoadBalancer.ValueCache,
            RpcLoadBalancer.LoadBalancer.DrainerCache,
-           RpcLoadBalancer.LoadBalancer.CounterCache,
-           RpcLoadBalancer.LoadBalancer.NodeCpuCache
+           RpcLoadBalancer.LoadBalancer.CounterCache
          ]}
       ] ++ algorithm_children ++ [
         {RpcLoadBalancer.LoadBalancer, opts}

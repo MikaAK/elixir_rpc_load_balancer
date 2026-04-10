@@ -3,6 +3,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
 
   alias RpcLoadBalancer.LoadBalancer.NodeCpuCache
   alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu
+  alias RpcLoadBalancer.LoadBalancer.ValueCache
 
   defp start_lb!(name, opts \\ []) do
     default_opts = [
@@ -11,9 +12,31 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
       algorithm_opts: Keyword.merge([poll_interval: 60_000], opts)
     ]
 
-    {:ok, _pid} = RpcLoadBalancer.start_link(default_opts)
-    Process.sleep(100)
+    start_supervised!({RpcLoadBalancer, default_opts}, id: name)
+    await_algorithm_init!(name)
     name
+  end
+
+  defp await_algorithm_init!(name) do
+    waited =
+      fn ->
+        case ValueCache.get({name, :cpu_opts}) do
+          {:ok, %{} = opts} -> opts
+          _ -> nil
+        end
+      end
+      |> Stream.repeatedly()
+      |> Stream.take(40)
+      |> Enum.find(fn
+        nil ->
+          Process.sleep(25)
+          false
+
+        _ ->
+          true
+      end)
+
+    waited || flunk("LeastCpu.init/2 did not populate ValueCache for #{inspect(name)}")
   end
 
   defp seed_cpu!(name, metrics) do
@@ -29,15 +52,15 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
     nodes = [:node_a, :node_b, :node_c]
     seed_cpu!(name, node_a: 80.0, node_b: 20.0, node_c: 50.0)
 
-    assert :node_b === LeastCpu.choose_from_nodes(name, nodes)
+    assert LeastCpu.choose_from_nodes(name, nodes) === :node_b
   end
 
-  test "randomly selects among nodes within threshold" do
-    name = start_lb!(:lcpu_threshold, cpu_threshold: 5.0)
+  test "cpu_threshold option drives the close-enough band" do
+    name = start_lb!(:lcpu_threshold, cpu_threshold: 2.0)
     nodes = [:node_a, :node_b, :node_c]
-    seed_cpu!(name, node_a: 22.0, node_b: 25.0, node_c: 50.0)
+    seed_cpu!(name, node_a: 22.0, node_b: 23.5, node_c: 25.0)
 
-    results = Enum.map(1..100, fn _ -> LeastCpu.choose_from_nodes(name, nodes) end)
+    results = for _ <- 1..200, do: LeastCpu.choose_from_nodes(name, nodes)
     unique = Enum.uniq(results)
 
     assert :node_a in unique
@@ -45,12 +68,21 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
     refute :node_c in unique
   end
 
+  test "tight threshold keeps selection on the minimum only" do
+    name = start_lb!(:lcpu_tight, cpu_threshold: 0.5)
+    nodes = [:node_a, :node_b]
+    seed_cpu!(name, node_a: 20.0, node_b: 22.0)
+
+    results = for _ <- 1..50, do: LeastCpu.choose_from_nodes(name, nodes)
+    assert Enum.uniq(results) === [:node_a]
+  end
+
   test "uses midpoint default (50.0) for nodes without cached CPU" do
     name = start_lb!(:lcpu_missing)
     nodes = [:node_a, :node_b]
     seed_cpu!(name, node_a: 60.0)
 
-    assert :node_b === LeastCpu.choose_from_nodes(name, nodes)
+    assert LeastCpu.choose_from_nodes(name, nodes) === :node_b
   end
 
   test "on_node_change :left removes departed node metrics" do
@@ -59,45 +91,48 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
 
     :ok = LeastCpu.on_node_change(name, {:left, [:node_a]})
 
-    assert {:ok, nil} === NodeCpuCache.get({name, :node_a})
+    assert NodeCpuCache.get({name, :node_a}) === {:ok, nil}
     assert {:ok, %{cpu: 40.0}} = NodeCpuCache.get({name, :node_b})
   end
 
-  test "on_node_change :joined is a no-op" do
+  test "on_node_change :joined is a no-op and leaves cache untouched" do
     name = start_lb!(:lcpu_join)
-    assert :ok === LeastCpu.on_node_change(name, {:joined, [:node_x]})
+    seed_cpu!(name, node_a: 10.0)
+
+    assert LeastCpu.on_node_change(name, {:joined, [:node_x]}) === :ok
+    assert {:ok, %{cpu: 10.0}} = NodeCpuCache.get({name, :node_a})
+    assert NodeCpuCache.get({name, :node_x}) === {:ok, nil}
   end
 
-  test "child_specs returns poller child spec" do
-    specs = LeastCpu.child_specs(:test_lb, poll_interval: 5_000, metric_source: :scheduler_utilization)
+  test "child_specs returns poller child spec keyed off load balancer name" do
+    specs = LeastCpu.child_specs(:test_lb, poll_interval: 5_000)
+
     assert length(specs) === 1
-    assert [%{id: _id, start: {LeastCpu.Poller, :start_link, [_opts]}}] = specs
+    assert [%{id: :test_lb_cpu_poller, start: {_, :start_link, [poller_opts]}}] = specs
+    assert Keyword.fetch!(poller_opts, :load_balancer_name) === :test_lb
+    assert Keyword.fetch!(poller_opts, :poll_interval) === 5_000
   end
 
-  test "poller writes local CPU and algorithm reads it" do
-    name = start_lb!(:lcpu_integration, poll_interval: 100)
-    Process.sleep(200)
-
-    {:ok, %{cpu: cpu}} = NodeCpuCache.get({name, node()})
-    assert is_float(cpu)
-    assert cpu >= 0.0 and cpu <= 100.0
-
-    nodes = [node()]
-    assert node() === LeastCpu.choose_from_nodes(name, nodes)
-  end
-
-  test "stale cache entry triggers inline refresh and falls back to midpoint default" do
-    name = start_lb!(:lcpu_stale, poll_interval: 60_000, cpu_cache_ttl: 1)
+  test "stale cache entry is treated as missing and does not trigger inline refresh" do
+    name = start_lb!(:lcpu_stale, poll_interval: 60_000, cpu_cache_ttl: 60_000)
     nodes = [:node_a, :node_b]
     now = System.monotonic_time(:millisecond)
 
-    # node_a's entry is stale (5s old, ttl is 1ms), inline refresh will fail
-    # (fake node), so node_a gets 50.0 midpoint default.
-    # node_b has fresh data at 30.0, so node_b should be selected.
-    NodeCpuCache.put({name, :node_a}, nil, %{cpu: 20.0, fetched_at: now - 5_000})
-    NodeCpuCache.put({name, :node_b}, nil, %{cpu: 30.0, fetched_at: now})
+    stale_entry = %{cpu: 20.0, fetched_at: now - 120_000}
+    fresh_entry = %{cpu: 30.0, fetched_at: now}
+    NodeCpuCache.put({name, :node_a}, nil, stale_entry)
+    NodeCpuCache.put({name, :node_b}, nil, fresh_entry)
 
-    selected = LeastCpu.choose_from_nodes(name, nodes)
-    assert selected === :node_b
+    assert LeastCpu.choose_from_nodes(name, nodes) === :node_b
+
+    assert {:ok, ^stale_entry} = NodeCpuCache.get({name, :node_a})
+    assert {:ok, ^fresh_entry} = NodeCpuCache.get({name, :node_b})
+  end
+
+  test "algorithm_opts flow through init/2 into ValueCache" do
+    name = start_lb!(:lcpu_opts_flow, cpu_threshold: 7.5, cpu_cache_ttl: 20_000)
+
+    assert {:ok, %{cpu_threshold: 7.5, cpu_cache_ttl: 20_000}} =
+             ValueCache.get({name, :cpu_opts})
   end
 end

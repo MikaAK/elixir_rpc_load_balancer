@@ -6,7 +6,8 @@ defmodule RpcLoadBalancer.Application do
   @impl true
   def start(_type, _args) do
     children = [
-      RpcLoadBalancer.LoadBalancer.Pg
+      RpcLoadBalancer.LoadBalancer.Pg,
+      {Cache, [RpcLoadBalancer.LoadBalancer.NodeCpuCache]}
     ]
 
     Supervisor.start_link(children, strategy: :one_for_one, name: RpcLoadBalancer.Supervisor)
