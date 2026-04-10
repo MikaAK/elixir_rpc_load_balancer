@@ -26,6 +26,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm do
     child_specs: 2,
     caches: 0
   ]
+  @optional_callbacks [init: 2, choose_nodes: 4, on_node_change: 2, release_node: 2, local?: 0, child_specs: 2]
 
   @spec get_algorithm(load_balancer_name()) :: {:ok, module() | nil} | {:error, ErrorMessage.t()}
   def get_algorithm(load_balancer_name) do
