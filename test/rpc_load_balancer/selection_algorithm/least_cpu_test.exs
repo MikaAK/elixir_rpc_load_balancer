@@ -201,9 +201,14 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
 
   test "poller writes local CPU and algorithm reads it" do
     name = start_lb!(:lcpu_integration, poll_interval: 100)
-    Process.sleep(200)
 
-    {:ok, %{cpu: cpu}} = NodeCpuCache.get({name, node()})
+    cpu = poll_until(fn ->
+      case NodeCpuCache.get({name, node()}) do
+        {:ok, %{cpu: cpu}} -> cpu
+        _ -> nil
+      end
+    end)
+
     assert is_float(cpu)
     assert cpu >= 0.0 and cpu <= 100.0
 
@@ -211,15 +216,26 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
     assert node() === LeastCpu.choose_from_nodes(name, nodes)
   end
 
+  defp poll_until(fun, attempts \\ 20) do
+    case fun.() do
+      nil when attempts > 0 ->
+        Process.sleep(50)
+        poll_until(fun, attempts - 1)
+
+      result ->
+        result
+    end
+  end
+
   test "stale cache entry triggers inline refresh and falls back to midpoint default" do
-    name = start_lb!(:lcpu_stale, poll_interval: 60_000, cpu_cache_ttl: 1)
+    name = start_lb!(:lcpu_stale, poll_interval: 60_000, cpu_cache_ttl: 60_000)
     nodes = [:node_a, :node_b]
     now = System.monotonic_time(:millisecond)
 
-    # node_a's entry is stale (5s old, ttl is 1ms), inline refresh will fail
+    # node_a's entry is stale (2min old, ttl is 60s), inline refresh will fail
     # (fake node), so node_a gets 50.0 midpoint default.
     # node_b has fresh data at 30.0, so node_b should be selected.
-    NodeCpuCache.put({name, :node_a}, nil, %{cpu: 20.0, fetched_at: now - 5_000})
+    NodeCpuCache.put({name, :node_a}, nil, %{cpu: 20.0, fetched_at: now - 120_000})
     NodeCpuCache.put({name, :node_b}, nil, %{cpu: 30.0, fetched_at: now})
 
     selected = LeastCpu.choose_from_nodes(name, nodes)
