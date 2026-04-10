@@ -124,6 +124,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.Poller do
   defp sample_cpu(%{metric_source: :cpu_sup} = state) do
     cpu =
       try do
+        # credo:disable-for-next-line Credo.Check.Refactor.Apply
         case apply(:cpu_sup, :util, []) do
           percent when is_number(percent) -> percent / 1.0
           _ -> 50.0
