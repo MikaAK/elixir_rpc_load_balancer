@@ -18,7 +18,7 @@ defmodule RpcLoadBalancer.LoadBalancer.NodeCpuCache do
   """
 
   use Cache,
-    adapter: Cache.ETS,
+    adapter: Cache.PersistentTerm,
     name: :rpc_lb_node_cpu_cache,
     sandbox?: Mix.env() === :test,
     opts: [type: :set, read_concurrency: true, write_concurrency: true]
