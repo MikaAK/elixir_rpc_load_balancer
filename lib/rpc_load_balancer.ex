@@ -37,17 +37,25 @@ defmodule RpcLoadBalancer do
 
   @impl true
   def init(opts) do
-    children = [
-      {Cache,
-       [
-         RpcLoadBalancer.LoadBalancer.IndexRegistry,
-         RpcLoadBalancer.LoadBalancer.AlgorithmCache,
-         RpcLoadBalancer.LoadBalancer.ValueCache,
-         RpcLoadBalancer.LoadBalancer.DrainerCache,
-         RpcLoadBalancer.LoadBalancer.CounterCache
-       ]},
-      {RpcLoadBalancer.LoadBalancer, opts}
-    ]
+    algorithm = Keyword.get(opts, :selection_algorithm, SelectionAlgorithm.Random)
+    algorithm_opts = Keyword.get(opts, :algorithm_opts, [])
+    name = Keyword.fetch!(opts, :name)
+
+    algorithm_children = SelectionAlgorithm.child_specs(algorithm, name, algorithm_opts)
+
+    children =
+      [
+        {Cache,
+         [
+           RpcLoadBalancer.LoadBalancer.IndexRegistry,
+           RpcLoadBalancer.LoadBalancer.AlgorithmCache,
+           RpcLoadBalancer.LoadBalancer.ValueCache,
+           RpcLoadBalancer.LoadBalancer.DrainerCache,
+           RpcLoadBalancer.LoadBalancer.CounterCache
+         ]}
+      ] ++ algorithm_children ++ [
+        {RpcLoadBalancer.LoadBalancer, opts}
+      ]
 
     Supervisor.init(children, strategy: :one_for_all)
   end
