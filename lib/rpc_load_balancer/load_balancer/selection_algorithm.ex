@@ -14,8 +14,9 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm do
   @callback on_node_change(load_balancer_name(), {:joined | :left, [node()]}) :: :ok
   @callback release_node(load_balancer_name(), node()) :: :ok
   @callback local?() :: boolean()
+  @callback child_specs(load_balancer_name(), opts :: keyword()) :: [Supervisor.child_spec()]
 
-  @optional_callbacks [init: 2, choose_nodes: 4, on_node_change: 2, release_node: 2, local?: 0]
+  @optional_callbacks [init: 2, choose_nodes: 4, on_node_change: 2, release_node: 2, local?: 0, child_specs: 2]
 
   @spec get_algorithm(load_balancer_name()) :: {:ok, module() | nil} | {:error, ErrorMessage.t()}
   def get_algorithm(load_balancer_name) do
@@ -74,5 +75,14 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm do
   @spec local?(module()) :: boolean()
   def local?(algorithm) do
     function_exported?(algorithm, :local?, 0) and algorithm.local?()
+  end
+
+  @spec child_specs(module(), load_balancer_name(), keyword()) :: [Supervisor.child_spec()]
+  def child_specs(algorithm, load_balancer_name, opts) do
+    if function_exported?(algorithm, :child_specs, 2) do
+      algorithm.child_specs(load_balancer_name, opts)
+    else
+      []
+    end
   end
 end
