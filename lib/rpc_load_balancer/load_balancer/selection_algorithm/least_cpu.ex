@@ -28,6 +28,15 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu do
     * `:poll_interval` - Background poll frequency in ms (default: `5_000`)
     * `:cpu_cache_ttl` - Max cache age before an entry is treated as missing (default: `10_000`)
     * `:cpu_threshold` - Band width in percentage points for "close enough" selection (default: `5.0`)
+    * `:cpu_sampler` - Zero-arity function returning a numeric CPU percent.
+      Defaults to `:cpu_sup.util/0`. Override for tests or to plug in an
+      alternative metric source.
+
+  ## Telemetry
+
+  The `Poller` emits `:telemetry` events under the
+  `[:rpc_load_balancer, :least_cpu, :poll]` prefix. See
+  `RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.Poller` for details.
   """
 
   @behaviour RpcLoadBalancer.LoadBalancer.SelectionAlgorithm
@@ -36,6 +45,9 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu do
   alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.Poller
   alias RpcLoadBalancer.LoadBalancer.ValueCache
 
+  # Cache-miss default used at selection time. The Poller has its own
+  # sampling-failure fallback — they're kept separate so tuning one doesn't
+  # silently affect the other.
   @default_cpu 50.0
   @default_cpu_cache_ttl 10_000
   @default_cpu_threshold 5.0
@@ -43,10 +55,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu do
 
   @impl true
   def child_specs(load_balancer_name, opts) do
-    poller_opts = [
-      load_balancer_name: load_balancer_name,
-      poll_interval: Keyword.get(opts, :poll_interval, @default_poll_interval)
-    ]
+    poller_opts = build_poller_opts(load_balancer_name, opts)
 
     [
       %{
@@ -54,6 +63,18 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu do
         start: {Poller, :start_link, [poller_opts]}
       }
     ]
+  end
+
+  defp build_poller_opts(load_balancer_name, opts) do
+    base = [
+      load_balancer_name: load_balancer_name,
+      poll_interval: Keyword.get(opts, :poll_interval, @default_poll_interval)
+    ]
+
+    case Keyword.get(opts, :cpu_sampler) do
+      nil -> base
+      sampler -> Keyword.put(base, :cpu_sampler, sampler)
+    end
   end
 
   @impl true

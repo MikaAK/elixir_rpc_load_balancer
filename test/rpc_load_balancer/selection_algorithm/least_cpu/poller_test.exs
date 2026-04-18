@@ -6,46 +6,46 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.PollerTest do
 
   defp start_poller!(name, opts \\ []) do
     default_opts = [load_balancer_name: name, poll_interval: 100]
-    start_supervised!({Poller, Keyword.merge(default_opts, opts)})
+    start_supervised!({Poller, Keyword.merge(default_opts, opts)}, id: name)
     name
   end
 
+  defp poll_until(fun, attempts \\ 40, sleep_ms \\ 50) do
+    case fun.() do
+      nil when attempts > 0 ->
+        Process.sleep(sleep_ms)
+        poll_until(fun, attempts - 1, sleep_ms)
+
+      nil ->
+        nil
+
+      value ->
+        value
+    end
+  end
+
   defp await_cpu_entry(key) do
-    waited =
-      fn ->
+    entry =
+      poll_until(fn ->
         case NodeCpuCache.get(key) do
-          {:ok, %{} = entry} ->
-            entry
-
-          _ ->
-            Process.sleep(50)
-            nil
+          {:ok, %{} = map} -> map
+          _ -> nil
         end
-      end
-      |> Stream.repeatedly()
-      |> Stream.take(40)
-      |> Enum.find(& &1)
+      end)
 
-    waited || flunk("cache entry #{inspect(key)} not populated within 2s")
+    entry || flunk("cache entry #{inspect(key)} not populated within 2s")
   end
 
   defp await_entry_after(key, prev_fetched_at) do
-    waited =
-      fn ->
+    entry =
+      poll_until(fn ->
         case NodeCpuCache.get(key) do
-          {:ok, %{fetched_at: ts} = entry} when ts > prev_fetched_at ->
-            entry
-
-          _ ->
-            Process.sleep(25)
-            nil
+          {:ok, %{fetched_at: ts} = map} when ts > prev_fetched_at -> map
+          _ -> nil
         end
-      end
-      |> Stream.repeatedly()
-      |> Stream.take(40)
-      |> Enum.find(& &1)
+      end)
 
-    waited || flunk("no tick overwrote fetched_at for #{inspect(key)} within 1s")
+    entry || flunk("no tick overwrote fetched_at for #{inspect(key)} within 2s")
   end
 
   test "writes local CPU metric from :cpu_sup to NodeCpuCache" do
@@ -63,5 +63,71 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.PollerTest do
     later = await_entry_after({name, node()}, first.fetched_at)
 
     assert later.fetched_at > first.fetched_at
+  end
+
+  test "falls back to the sampler-failure default when cpu_sampler raises" do
+    name =
+      start_poller!(:poller_raise,
+        cpu_sampler: fn -> raise "boom" end
+      )
+
+    entry = await_cpu_entry({name, node()})
+    assert entry.cpu === 50.0
+  end
+
+  test "falls back to the sampler-failure default when cpu_sampler exits" do
+    name =
+      start_poller!(:poller_exit,
+        cpu_sampler: fn -> exit(:sampler_exit) end
+      )
+
+    entry = await_cpu_entry({name, node()})
+    assert entry.cpu === 50.0
+  end
+
+  test "falls back to the sampler-failure default when cpu_sampler returns non-number" do
+    name =
+      start_poller!(:poller_non_number,
+        cpu_sampler: fn -> :unexpected end
+      )
+
+    entry = await_cpu_entry({name, node()})
+    assert entry.cpu === 50.0
+  end
+
+  test "honours a custom numeric sampler" do
+    name = start_poller!(:poller_custom, cpu_sampler: fn -> 42 end)
+    entry = await_cpu_entry({name, node()})
+
+    assert entry.cpu === 42.0
+  end
+
+  test "emits :telemetry span events on every poll" do
+    handler_id = {__MODULE__, :telemetry_test}
+    test_pid = self()
+
+    :telemetry.attach_many(
+      handler_id,
+      [
+        [:rpc_load_balancer, :least_cpu, :poll, :start],
+        [:rpc_load_balancer, :least_cpu, :poll, :stop]
+      ],
+      fn event, measurements, metadata, _ ->
+        send(test_pid, {:telemetry, event, measurements, metadata})
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    start_poller!(:poller_telemetry, cpu_sampler: fn -> 10 end)
+
+    assert_receive {:telemetry, [:rpc_load_balancer, :least_cpu, :poll, :start],
+                    _, %{load_balancer_name: :poller_telemetry}},
+                   1_000
+
+    assert_receive {:telemetry, [:rpc_load_balancer, :least_cpu, :poll, :stop],
+                    %{duration: _}, %{load_balancer_name: :poller_telemetry}},
+                   1_000
   end
 end

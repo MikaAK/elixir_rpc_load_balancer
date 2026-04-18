@@ -3,6 +3,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
 
   alias RpcLoadBalancer.LoadBalancer.NodeCpuCache
   alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu
+  alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.Poller
   alias RpcLoadBalancer.LoadBalancer.ValueCache
 
   defp start_lb!(name, opts \\ []) do
@@ -17,26 +18,30 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
     name
   end
 
+  defp poll_until(fun, attempts \\ 40, sleep_ms \\ 25) do
+    case fun.() do
+      nil when attempts > 0 ->
+        Process.sleep(sleep_ms)
+        poll_until(fun, attempts - 1, sleep_ms)
+
+      nil ->
+        nil
+
+      value ->
+        value
+    end
+  end
+
   defp await_algorithm_init!(name) do
-    waited =
-      fn ->
+    opts =
+      poll_until(fn ->
         case ValueCache.get({name, :cpu_opts}) do
           {:ok, %{} = opts} -> opts
           _ -> nil
         end
-      end
-      |> Stream.repeatedly()
-      |> Stream.take(40)
-      |> Enum.find(fn
-        nil ->
-          Process.sleep(25)
-          false
-
-        _ ->
-          true
       end)
 
-    waited || flunk("LeastCpu.init/2 did not populate ValueCache for #{inspect(name)}")
+    opts || flunk("LeastCpu.init/2 did not populate ValueCache for #{inspect(name)}")
   end
 
   defp seed_cpu!(name, metrics) do
@@ -113,6 +118,21 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
     assert Keyword.fetch!(poller_opts, :poll_interval) === 5_000
   end
 
+  test "child_specs forwards cpu_sampler when provided" do
+    sampler = fn -> 42 end
+    specs = LeastCpu.child_specs(:test_lb_sampler, cpu_sampler: sampler)
+
+    assert [%{start: {_, :start_link, [poller_opts]}}] = specs
+    assert Keyword.fetch!(poller_opts, :cpu_sampler) === sampler
+  end
+
+  test "child_specs omits cpu_sampler when not provided" do
+    specs = LeastCpu.child_specs(:test_lb_nosampler, [])
+
+    assert [%{start: {_, :start_link, [poller_opts]}}] = specs
+    refute Keyword.has_key?(poller_opts, :cpu_sampler)
+  end
+
   test "stale cache entry is treated as missing and does not trigger inline refresh" do
     name = start_lb!(:lcpu_stale, poll_interval: 60_000, cpu_cache_ttl: 60_000)
     nodes = [:node_a, :node_b]
@@ -134,5 +154,32 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
 
     assert {:ok, %{cpu_threshold: 7.5, cpu_cache_ttl: 20_000}} =
              ValueCache.get({name, :cpu_opts})
+  end
+
+  test "poller is registered before the LoadBalancer GenServer finishes booting" do
+    name =
+      start_lb!(:lcpu_ordering,
+        poll_interval: 50,
+        cpu_sampler: fn -> 17 end
+      )
+
+    # `start_lb!` returns only after every child's `start_link` has completed,
+    # so the Poller must be registered by this point — demonstrating the
+    # algorithm_children-before-LoadBalancer ordering in the supervisor.
+    poller_pid = Process.whereis(Poller.poller_name(name))
+    assert is_pid(poller_pid)
+    assert Process.alive?(poller_pid)
+
+    entry =
+      poll_until(fn ->
+        case NodeCpuCache.get({name, node()}) do
+          {:ok, %{cpu: 17.0} = map} -> map
+          _ -> nil
+        end
+      end)
+
+    assert entry, "poller did not write the injected CPU value within the timeout"
+
+    assert LeastCpu.choose_from_nodes(name, [node()]) === node()
   end
 end

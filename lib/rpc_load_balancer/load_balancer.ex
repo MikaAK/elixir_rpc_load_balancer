@@ -7,6 +7,7 @@ defmodule RpcLoadBalancer.LoadBalancer do
   use GenServer
 
   alias RpcLoadBalancer.LoadBalancer.Drainer
+  alias RpcLoadBalancer.LoadBalancer.IndexRegistry
   alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm
 
   @pg_group_name RpcLoadBalancer.LoadBalancer.Pg.pg_group_name()
@@ -45,15 +46,9 @@ defmodule RpcLoadBalancer.LoadBalancer do
   end
 
   @impl true
-  @spec init(state()) :: {:ok, state(), {:continue, :register}}
+  @spec init(state()) :: {:ok, state()}
   def init(state) do
     Process.flag(:trap_exit, true)
-    {:ok, state, {:continue, :register}}
-  end
-
-  @impl true
-  def handle_continue(:register, state) do
-    alias RpcLoadBalancer.LoadBalancer.IndexRegistry
 
     IndexRegistry.init_counter(:rpc_lb_drainer_cache)
     IndexRegistry.init_counter(:rpc_lb_counter_cache)
@@ -69,7 +64,7 @@ defmodule RpcLoadBalancer.LoadBalancer do
 
     pg_ref = monitor_pg_group(state.name)
 
-    {:noreply, %{state | pg_ref: pg_ref, drainer_index: drainer_index}}
+    {:ok, %{state | pg_ref: pg_ref, drainer_index: drainer_index}}
   end
 
   @impl true

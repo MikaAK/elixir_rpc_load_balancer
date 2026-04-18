@@ -43,6 +43,10 @@ defmodule RpcLoadBalancer do
 
     algorithm_children = SelectionAlgorithm.child_specs(algorithm, name, algorithm_opts)
 
+    # Algorithm children (e.g. pollers) must start BEFORE the LoadBalancer
+    # GenServer. Once LoadBalancer joins the :pg group, selection can happen,
+    # so any algorithm-owned processes that produce data for selection
+    # (CPU samples, counters, etc.) need to be up first.
     children =
       [
         {Cache,

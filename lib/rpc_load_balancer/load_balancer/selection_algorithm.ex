@@ -79,7 +79,9 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm do
 
   @spec child_specs(module(), load_balancer_name(), keyword()) :: [Supervisor.child_spec()]
   def child_specs(algorithm, load_balancer_name, opts) do
-    _loaded = Code.ensure_loaded(algorithm)
+    # Force-load the algorithm module so function_exported?/3 sees optional
+    # callbacks; ignore the result — only the side effect matters here.
+    _ = Code.ensure_loaded(algorithm)
 
     if function_exported?(algorithm, :child_specs, 2) do
       algorithm.child_specs(load_balancer_name, opts)
