@@ -1,7 +1,12 @@
 defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.Poller do
   @moduledoc """
   GenServer that periodically samples local CPU via `:cpu_sup` and fetches
-  remote node CPU via `:erpc`, storing all results in `NodeCpuCache`.
+  remote node CPU via `:erpc.multicall/5`, storing all results in
+  `NodeCpuCache`.
+
+  Remote fetches run in parallel — `:erpc.multicall/5` applies the timeout
+  per-call, so poll wall-time stays bounded by `@remote_timeout` regardless
+  of cluster size.
 
   `:cpu_sup` (from `:os_mon`) is used instead of scheduler wall time because
   enabling `:erlang.system_flag(:scheduler_wall_time, true)` is a VM-wide
@@ -18,9 +23,11 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.Poller do
       — span around a full poll cycle (local sample + remote fetches).
       Metadata: `%{load_balancer_name: name}`.
     * `[:rpc_load_balancer, :least_cpu, :poll, :remote_error]`
-      — emitted when a remote `:erpc.call` fails.
+      — emitted for each remote that failed within a multicall cycle.
       Measurements: `%{count: 1}`.
       Metadata: `%{load_balancer_name: name, node: remote_node, kind: :exit | :error}`.
+      `:exit` covers connectivity-class failures (timeout, noconnection);
+      `:error` covers remote raises and unexpected shapes.
   """
 
   use GenServer
@@ -107,16 +114,50 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.Poller do
   end
 
   defp poll_remote_nodes(state) do
-    state.load_balancer_name
-    |> remote_members()
-    |> Enum.each(&fetch_and_store_remote(state.load_balancer_name, &1))
+    case remote_members(state.load_balancer_name) do
+      [] -> :ok
+      remotes -> fetch_and_store_remotes(state.load_balancer_name, remotes)
+    end
   end
 
-  defp fetch_and_store_remote(load_balancer_name, remote_node) do
-    case fetch_remote_cpu(load_balancer_name, remote_node) do
-      {:ok, %{cpu: cpu}} -> store_cpu(load_balancer_name, remote_node, cpu)
-      _ -> :ok
-    end
+  defp fetch_and_store_remotes(load_balancer_name, remotes) do
+    remotes
+    |> :erpc.multicall(NodeCpuCache, :get_local, [load_balancer_name], @remote_timeout)
+    |> Enum.zip(remotes)
+    |> Enum.each(fn {result, remote_node} ->
+      handle_remote_result(result, load_balancer_name, remote_node)
+    end)
+  end
+
+  defp handle_remote_result({:ok, {:ok, %{cpu: cpu}}}, load_balancer_name, remote_node) do
+    store_cpu(load_balancer_name, remote_node, cpu)
+  end
+
+  defp handle_remote_result({:ok, _other}, _load_balancer_name, _remote_node), do: :ok
+
+  defp handle_remote_result({:error, {:erpc, reason}}, load_balancer_name, remote_node) do
+    log_remote_failure(remote_node, reason)
+    emit_remote_error(load_balancer_name, remote_node, erpc_kind(reason))
+  end
+
+  defp handle_remote_result({:error, reason}, load_balancer_name, remote_node) do
+    log_remote_failure(remote_node, reason)
+    emit_remote_error(load_balancer_name, remote_node, :error)
+  end
+
+  defp handle_remote_result({:throw, value}, load_balancer_name, remote_node) do
+    log_remote_failure(remote_node, {:throw, value})
+    emit_remote_error(load_balancer_name, remote_node, :error)
+  end
+
+  defp erpc_kind(:timeout), do: :exit
+  defp erpc_kind(:noconnection), do: :exit
+  defp erpc_kind(_), do: :error
+
+  defp log_remote_failure(remote_node, reason) do
+    Logger.debug(
+      "#{__MODULE__}: remote CPU fetch failed, node: #{inspect(remote_node)}, reason: #{inspect(reason)}"
+    )
   end
 
   defp store_cpu(load_balancer_name, target_node, cpu) do
@@ -133,35 +174,6 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.Poller do
     |> Enum.map(&node/1)
     |> Enum.uniq()
     |> Enum.reject(&(&1 === node()))
-  end
-
-  defp fetch_remote_cpu(load_balancer_name, remote_node) do
-    {:ok,
-     :erpc.call(
-       remote_node,
-       NodeCpuCache,
-       :get,
-       [{load_balancer_name, remote_node}],
-       @remote_timeout
-     )}
-  rescue
-    exception in ErlangError ->
-      emit_remote_error(load_balancer_name, remote_node, :error)
-
-      Logger.debug(
-        "#{__MODULE__}: remote CPU fetch failed, node: #{inspect(remote_node)}, exception: #{inspect(exception)}"
-      )
-
-      :error
-  catch
-    :exit, reason ->
-      emit_remote_error(load_balancer_name, remote_node, :exit)
-
-      Logger.debug(
-        "#{__MODULE__}: remote CPU fetch exited, node: #{inspect(remote_node)}, reason: #{inspect(reason)}"
-      )
-
-      :error
   end
 
   defp emit_remote_error(load_balancer_name, remote_node, kind) do

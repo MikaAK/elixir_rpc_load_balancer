@@ -16,4 +16,15 @@ defmodule RpcLoadBalancer.LoadBalancer.NodeCpuCache do
     name: :rpc_lb_node_cpu_cache,
     sandbox?: false,
     opts: [read_concurrency: true, write_concurrency: true]
+
+  @doc """
+  Reads the local node's cached CPU entry for a given load balancer.
+
+  Exposed as a dedicated function so `:erpc.multicall/5` can target it with a
+  single argument list — the remote node resolves its own identity rather
+  than the caller embedding it in the key.
+  """
+  @spec get_local(atom() | module()) ::
+          {:ok, %{cpu: float(), fetched_at: integer()} | nil} | {:error, any()}
+  def get_local(load_balancer_name), do: get({load_balancer_name, node()})
 end
