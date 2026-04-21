@@ -5,6 +5,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.PollerTest do
   alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.Poller
 
   defp start_poller!(name, opts \\ []) do
+    start_supervised!(NodeCpuCache.child_spec(name), id: {:ncc, name})
     default_opts = [load_balancer_name: name, poll_interval: 100]
     start_supervised!({Poller, Keyword.merge(default_opts, opts)}, id: name)
     name
@@ -24,33 +25,33 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.PollerTest do
     end
   end
 
-  defp await_cpu_entry(key) do
+  defp await_cpu_entry(name) do
     entry =
       poll_until(fn ->
-        case NodeCpuCache.get(key) do
+        case NodeCpuCache.get_local(name) do
           {:ok, %{} = map} -> map
           _ -> nil
         end
       end)
 
-    entry || flunk("cache entry #{inspect(key)} not populated within 2s")
+    entry || flunk("cache entry for #{inspect(name)} not populated within 2s")
   end
 
-  defp await_entry_after(key, prev_fetched_at) do
+  defp await_entry_after(name, prev_fetched_at) do
     entry =
       poll_until(fn ->
-        case NodeCpuCache.get(key) do
+        case NodeCpuCache.get_local(name) do
           {:ok, %{fetched_at: ts} = map} when ts > prev_fetched_at -> map
           _ -> nil
         end
       end)
 
-    entry || flunk("no tick overwrote fetched_at for #{inspect(key)} within 2s")
+    entry || flunk("no tick overwrote fetched_at for #{inspect(name)} within 2s")
   end
 
   test "writes local CPU metric from :cpu_sup to NodeCpuCache" do
     name = start_poller!(:poller_local)
-    entry = await_cpu_entry({name, node()})
+    entry = await_cpu_entry(name)
 
     assert is_float(entry.cpu)
     assert entry.cpu >= 0.0 and entry.cpu <= 100.0
@@ -59,8 +60,8 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.PollerTest do
 
   test "updates local CPU metric on subsequent ticks" do
     name = start_poller!(:poller_ticks, poll_interval: 50)
-    first = await_cpu_entry({name, node()})
-    later = await_entry_after({name, node()}, first.fetched_at)
+    first = await_cpu_entry(name)
+    later = await_entry_after(name, first.fetched_at)
 
     assert later.fetched_at > first.fetched_at
   end
@@ -71,7 +72,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.PollerTest do
         cpu_sampler: fn -> raise "boom" end
       )
 
-    entry = await_cpu_entry({name, node()})
+    entry = await_cpu_entry(name)
     assert entry.cpu === 50.0
   end
 
@@ -81,7 +82,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.PollerTest do
         cpu_sampler: fn -> exit(:sampler_exit) end
       )
 
-    entry = await_cpu_entry({name, node()})
+    entry = await_cpu_entry(name)
     assert entry.cpu === 50.0
   end
 
@@ -91,13 +92,13 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.PollerTest do
         cpu_sampler: fn -> :unexpected end
       )
 
-    entry = await_cpu_entry({name, node()})
+    entry = await_cpu_entry(name)
     assert entry.cpu === 50.0
   end
 
   test "honours a custom numeric sampler" do
     name = start_poller!(:poller_custom, cpu_sampler: fn -> 42 end)
-    entry = await_cpu_entry({name, node()})
+    entry = await_cpu_entry(name)
 
     assert entry.cpu === 42.0
   end

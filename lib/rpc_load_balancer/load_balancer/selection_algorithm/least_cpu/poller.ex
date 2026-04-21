@@ -35,8 +35,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.Poller do
   require Logger
 
   alias RpcLoadBalancer.LoadBalancer.NodeCpuCache
-
-  @pg_group_name RpcLoadBalancer.LoadBalancer.Pg.pg_group_name()
+  alias RpcLoadBalancer.LoadBalancer.Pg
 
   @default_poll_interval 5_000
   # Fallback CPU percent written into cache when the sampler fails.
@@ -114,18 +113,10 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.Poller do
   end
 
   defp poll_remote_nodes(state) do
-    case remote_members(state.load_balancer_name) do
-      [] -> :ok
-      remotes -> fetch_and_store_remotes(state.load_balancer_name, remotes)
-    end
-  end
-
-  defp fetch_and_store_remotes(load_balancer_name, remotes) do
-    remotes
-    |> :erpc.multicall(NodeCpuCache, :get_local, [load_balancer_name], @remote_timeout)
-    |> Enum.zip(remotes)
-    |> Enum.each(fn {result, remote_node} ->
-      handle_remote_result(result, load_balancer_name, remote_node)
+    state.load_balancer_name
+    |> Pg.multicall(NodeCpuCache, :get_local, [state.load_balancer_name], @remote_timeout)
+    |> Enum.each(fn {remote_node, result} ->
+      handle_remote_result(result, state.load_balancer_name, remote_node)
     end)
   end
 
@@ -161,19 +152,10 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.Poller do
   end
 
   defp store_cpu(load_balancer_name, target_node, cpu) do
-    NodeCpuCache.put(
-      {load_balancer_name, target_node},
-      nil,
-      %{cpu: cpu, fetched_at: System.monotonic_time(:millisecond)}
-    )
-  end
-
-  defp remote_members(load_balancer_name) do
-    @pg_group_name
-    |> :pg.get_members(load_balancer_name)
-    |> Enum.map(&node/1)
-    |> Enum.uniq()
-    |> Enum.reject(&(&1 === node()))
+    NodeCpuCache.put(load_balancer_name, target_node, %{
+      cpu: cpu,
+      fetched_at: System.monotonic_time(:millisecond)
+    })
   end
 
   defp emit_remote_error(load_balancer_name, remote_node, kind) do

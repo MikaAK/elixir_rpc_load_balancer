@@ -58,6 +58,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu do
     poller_opts = build_poller_opts(load_balancer_name, opts)
 
     [
+      NodeCpuCache.child_spec(load_balancer_name),
       %{
         id: Poller.poller_name(load_balancer_name),
         start: {Poller, :start_link, [poller_opts]}
@@ -98,10 +99,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu do
   def on_node_change(_load_balancer_name, {:joined, _nodes}), do: :ok
 
   def on_node_change(load_balancer_name, {:left, nodes}) do
-    Enum.each(nodes, fn target_node ->
-      NodeCpuCache.delete({load_balancer_name, target_node})
-    end)
-
+    Enum.each(nodes, &NodeCpuCache.delete(load_balancer_name, &1))
     :ok
   end
 
@@ -114,7 +112,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu do
   end
 
   defp read_node_cpu(load_balancer_name, target_node, now, ttl) do
-    case NodeCpuCache.get({load_balancer_name, target_node}) do
+    case NodeCpuCache.get(load_balancer_name, target_node) do
       {:ok, %{cpu: cpu, fetched_at: fetched_at}} when now - fetched_at <= ttl -> cpu
       _ -> @default_cpu
     end
