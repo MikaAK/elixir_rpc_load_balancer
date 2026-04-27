@@ -26,6 +26,9 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu do
   ## Options
 
     * `:poll_interval` - Background poll frequency in ms (default: `5_000`)
+    * `:poll_startup_jitter` - Max ms of random delay before the first poll
+      fires (default: `60_000`). Prevents thundering-herd multicalls when many
+      nodes boot at once. Set `0` to disable.
     * `:cpu_cache_ttl` - Max cache age before an entry is treated as missing (default: `10_000`)
     * `:cpu_threshold` - Band width in percentage points for "close enough" selection (default: `5.0`)
     * `:cpu_sampler` - Zero-arity function returning a numeric CPU percent.
@@ -54,11 +57,13 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu do
   @default_poll_interval 5_000
 
   @impl true
+  def caches, do: [NodeCpuCache]
+
+  @impl true
   def child_specs(load_balancer_name, opts) do
     poller_opts = build_poller_opts(load_balancer_name, opts)
 
     [
-      NodeCpuCache.child_spec(load_balancer_name),
       %{
         id: Poller.poller_name(load_balancer_name),
         start: {Poller, :start_link, [poller_opts]}
@@ -67,14 +72,18 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu do
   end
 
   defp build_poller_opts(load_balancer_name, opts) do
-    base = [
+    [
       load_balancer_name: load_balancer_name,
       poll_interval: Keyword.get(opts, :poll_interval, @default_poll_interval)
     ]
+    |> maybe_put_opt(opts, :cpu_sampler)
+    |> maybe_put_opt(opts, :poll_startup_jitter)
+  end
 
-    case Keyword.get(opts, :cpu_sampler) do
-      nil -> base
-      sampler -> Keyword.put(base, :cpu_sampler, sampler)
+  defp maybe_put_opt(target, opts, key) do
+    case Keyword.fetch(opts, key) do
+      {:ok, value} -> Keyword.put(target, key, value)
+      :error -> target
     end
   end
 
@@ -99,7 +108,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu do
   def on_node_change(_load_balancer_name, {:joined, _nodes}), do: :ok
 
   def on_node_change(load_balancer_name, {:left, nodes}) do
-    Enum.each(nodes, &NodeCpuCache.delete(load_balancer_name, &1))
+    Enum.each(nodes, &NodeCpuCache.delete_cpu(load_balancer_name, &1))
     :ok
   end
 
@@ -112,7 +121,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu do
   end
 
   defp read_node_cpu(load_balancer_name, target_node, now, ttl) do
-    case NodeCpuCache.get(load_balancer_name, target_node) do
+    case NodeCpuCache.get_cpu(load_balancer_name, target_node) do
       {:ok, %{cpu: cpu, fetched_at: fetched_at}} when now - fetched_at <= ttl -> cpu
       _ -> @default_cpu
     end

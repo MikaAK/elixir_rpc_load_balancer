@@ -48,19 +48,11 @@ defmodule RpcLoadBalancer do
     # soon as `start_link/1` returns can reach these processes. They do not
     # need to have produced data yet — selection tolerates a cold cache and
     # falls back to per-algorithm defaults.
-    children =
-      [
-        {Cache,
-         [
-           RpcLoadBalancer.LoadBalancer.IndexRegistry,
-           RpcLoadBalancer.LoadBalancer.AlgorithmCache,
-           RpcLoadBalancer.LoadBalancer.ValueCache,
-           RpcLoadBalancer.LoadBalancer.DrainerCache,
-           RpcLoadBalancer.LoadBalancer.CounterCache
-         ]}
-      ] ++ algorithm_children ++ [
-        {RpcLoadBalancer.LoadBalancer, opts}
-      ]
+    #
+    # Shared caches (`{Cache, [...]}`) are owned by `RpcLoadBalancer.Application`,
+    # not this per-LB supervisor — this keeps cache agent lifetime bound to
+    # the VM instead of any individual load balancer.
+    children = algorithm_children ++ [{RpcLoadBalancer.LoadBalancer, opts}]
 
     Supervisor.init(children, strategy: :one_for_all)
   end

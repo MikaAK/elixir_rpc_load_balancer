@@ -7,6 +7,7 @@ defmodule RpcLoadBalancer.MixProject do
       version: "0.2.1",
       elixir: "~> 1.13",
       start_permanent: Mix.env() == :prod,
+      elixirc_paths: elixirc_paths(Mix.env()),
       deps: deps(),
       description: "RPC wrappers with a node load balancer",
       docs: docs(),
@@ -41,10 +42,13 @@ defmodule RpcLoadBalancer.MixProject do
     ]
   end
 
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_), do: ["lib"]
+
   defp deps do
     [
       {:error_message, "~> 0.3"},
-      {:elixir_cache, ">= 0.4.3"},
+      {:elixir_cache, ">= 0.4.8"},
       {:libring, "~> 1.7"},
       {:castore, "~> 1.0"},
 

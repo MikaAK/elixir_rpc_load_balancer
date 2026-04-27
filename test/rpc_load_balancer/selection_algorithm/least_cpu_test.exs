@@ -1,5 +1,6 @@
 defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
   use ExUnit.Case, async: true
+  use RpcLoadBalancer.CacheCase
 
   alias RpcLoadBalancer.LoadBalancer.NodeCpuCache
   alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu
@@ -10,7 +11,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
     default_opts = [
       name: name,
       selection_algorithm: LeastCpu,
-      algorithm_opts: Keyword.merge([poll_interval: 60_000], opts)
+      algorithm_opts: Keyword.merge([poll_interval: 60_000, poll_startup_jitter: 0], opts)
     ]
 
     start_supervised!({RpcLoadBalancer, default_opts}, id: name)
@@ -48,7 +49,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
     now = System.monotonic_time(:millisecond)
 
     Enum.each(metrics, fn {node_name, cpu} ->
-      NodeCpuCache.put(name, node_name, %{cpu: cpu, fetched_at: now})
+      NodeCpuCache.put_cpu(name, node_name, %{cpu: cpu, fetched_at: now})
     end)
   end
 
@@ -96,8 +97,8 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
 
     :ok = LeastCpu.on_node_change(name, {:left, [:node_a]})
 
-    assert NodeCpuCache.get(name, :node_a) === {:ok, nil}
-    assert {:ok, %{cpu: 40.0}} = NodeCpuCache.get(name, :node_b)
+    assert NodeCpuCache.get_cpu(name, :node_a) === {:ok, nil}
+    assert {:ok, %{cpu: 40.0}} = NodeCpuCache.get_cpu(name, :node_b)
   end
 
   test "on_node_change :joined is a no-op and leaves cache untouched" do
@@ -105,15 +106,18 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
     seed_cpu!(name, node_a: 10.0)
 
     assert LeastCpu.on_node_change(name, {:joined, [:node_x]}) === :ok
-    assert {:ok, %{cpu: 10.0}} = NodeCpuCache.get(name, :node_a)
-    assert NodeCpuCache.get(name, :node_x) === {:ok, nil}
+    assert {:ok, %{cpu: 10.0}} = NodeCpuCache.get_cpu(name, :node_a)
+    assert NodeCpuCache.get_cpu(name, :node_x) === {:ok, nil}
   end
 
-  test "child_specs returns the per-LB NodeCpuCache spec followed by the Poller spec" do
+  test "caches/0 declares NodeCpuCache so the application boots it once" do
+    assert LeastCpu.caches() === [NodeCpuCache]
+  end
+
+  test "child_specs returns only the Poller spec — caches are application-owned" do
     specs = LeastCpu.child_specs(:test_lb, poll_interval: 5_000)
 
-    assert [cache_spec, poller_spec] = specs
-    assert %{id: {NodeCpuCache, :test_lb}, start: {NodeCpuCache, :start_link, [:test_lb]}} = cache_spec
+    assert [poller_spec] = specs
     assert %{id: :test_lb_cpu_poller, start: {_, :start_link, [poller_opts]}} = poller_spec
     assert Keyword.fetch!(poller_opts, :load_balancer_name) === :test_lb
     assert Keyword.fetch!(poller_opts, :poll_interval) === 5_000
@@ -123,15 +127,29 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
     sampler = fn -> 42 end
     specs = LeastCpu.child_specs(:test_lb_sampler, cpu_sampler: sampler)
 
-    assert [_cache_spec, %{start: {_, :start_link, [poller_opts]}}] = specs
+    assert [%{start: {_, :start_link, [poller_opts]}}] = specs
     assert Keyword.fetch!(poller_opts, :cpu_sampler) === sampler
   end
 
   test "child_specs omits cpu_sampler when not provided" do
     specs = LeastCpu.child_specs(:test_lb_nosampler, [])
 
-    assert [_cache_spec, %{start: {_, :start_link, [poller_opts]}}] = specs
+    assert [%{start: {_, :start_link, [poller_opts]}}] = specs
     refute Keyword.has_key?(poller_opts, :cpu_sampler)
+  end
+
+  test "child_specs forwards poll_startup_jitter when provided" do
+    specs = LeastCpu.child_specs(:test_lb_jitter, poll_startup_jitter: 1_000)
+
+    assert [%{start: {_, :start_link, [poller_opts]}}] = specs
+    assert Keyword.fetch!(poller_opts, :poll_startup_jitter) === 1_000
+  end
+
+  test "child_specs omits poll_startup_jitter when not provided" do
+    specs = LeastCpu.child_specs(:test_lb_no_jitter, [])
+
+    assert [%{start: {_, :start_link, [poller_opts]}}] = specs
+    refute Keyword.has_key?(poller_opts, :poll_startup_jitter)
   end
 
   test "stale cache entry is treated as missing and does not trigger inline refresh" do
@@ -141,13 +159,13 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
 
     stale_entry = %{cpu: 20.0, fetched_at: now - 120_000}
     fresh_entry = %{cpu: 30.0, fetched_at: now}
-    NodeCpuCache.put(name, :node_a, stale_entry)
-    NodeCpuCache.put(name, :node_b, fresh_entry)
+    NodeCpuCache.put_cpu(name, :node_a, stale_entry)
+    NodeCpuCache.put_cpu(name, :node_b, fresh_entry)
 
     assert LeastCpu.choose_from_nodes(name, nodes) === :node_b
 
-    assert {:ok, ^stale_entry} = NodeCpuCache.get(name, :node_a)
-    assert {:ok, ^fresh_entry} = NodeCpuCache.get(name, :node_b)
+    assert {:ok, ^stale_entry} = NodeCpuCache.get_cpu(name, :node_a)
+    assert {:ok, ^fresh_entry} = NodeCpuCache.get_cpu(name, :node_b)
   end
 
   test "algorithm_opts flow through init/2 into ValueCache" do
@@ -173,7 +191,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
 
     entry =
       poll_until(fn ->
-        case NodeCpuCache.get(name, node()) do
+        case NodeCpuCache.get_cpu(name, node()) do
           {:ok, %{cpu: 17.0} = map} -> map
           _ -> nil
         end

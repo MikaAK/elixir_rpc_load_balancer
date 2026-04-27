@@ -10,7 +10,7 @@ defmodule RpcLoadBalancer.LoadBalancer.IndexRegistry do
   use Cache,
     adapter: Cache.PersistentTerm,
     name: :rpc_lb_index_registry,
-    sandbox?: false,
+    sandbox?: Mix.env() === :test,
     opts: []
 
   @spec init_counter(atom()) :: :ok

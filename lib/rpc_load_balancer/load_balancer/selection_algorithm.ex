@@ -15,8 +15,17 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm do
   @callback release_node(load_balancer_name(), node()) :: :ok
   @callback local?() :: boolean()
   @callback child_specs(load_balancer_name(), opts :: keyword()) :: [Supervisor.child_spec()]
+  @callback caches() :: [module()]
 
-  @optional_callbacks [init: 2, choose_nodes: 4, on_node_change: 2, release_node: 2, local?: 0, child_specs: 2]
+  @optional_callbacks [
+    init: 2,
+    choose_nodes: 4,
+    on_node_change: 2,
+    release_node: 2,
+    local?: 0,
+    child_specs: 2,
+    caches: 0
+  ]
 
   @spec get_algorithm(load_balancer_name()) :: {:ok, module() | nil} | {:error, ErrorMessage.t()}
   def get_algorithm(load_balancer_name) do
@@ -88,5 +97,35 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm do
     else
       []
     end
+  end
+
+  @doc """
+  Returns the cache modules an algorithm needs.
+
+  Algorithms that don't require any caches can omit the `caches/0`
+  callback entirely; we treat that as `[]`.
+  """
+  @spec caches(module()) :: [module()]
+  def caches(algorithm) do
+    _ = Code.ensure_loaded(algorithm)
+
+    if function_exported?(algorithm, :caches, 0) do
+      algorithm.caches()
+    else
+      []
+    end
+  end
+
+  @doc """
+  Returns the union of caches required by every algorithm passed in.
+
+  Used by `RpcLoadBalancer.Application` to start exactly the cache
+  agents the configured algorithms need — no more, no less.
+  """
+  @spec all_caches([module()]) :: [module()]
+  def all_caches(algorithms) do
+    algorithms
+    |> Enum.flat_map(&caches/1)
+    |> Enum.uniq()
   end
 end

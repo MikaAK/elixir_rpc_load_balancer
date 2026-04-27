@@ -13,6 +13,15 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.Poller do
   side effect with measurable overhead. `:os_mon` samples the OS directly
   and introduces no global BEAM flag.
 
+  ## Startup jitter
+
+  The first poll is scheduled with a random delay in
+  `[0, poll_startup_jitter]` ms (default `60_000`). When many nodes boot
+  simultaneously — e.g. a cluster-wide deploy — this prevents every poller
+  from issuing its initial multicall in the same instant and overwhelming
+  remote `NodeCpuCache.get_local/1` workers. Set `:poll_startup_jitter` to
+  `0` to disable (useful in tests).
+
   ## Telemetry
 
   Events are emitted under the `[:rpc_load_balancer, :least_cpu, :poll]`
@@ -38,6 +47,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.Poller do
   alias RpcLoadBalancer.LoadBalancer.Pg
 
   @default_poll_interval 5_000
+  @default_poll_startup_jitter :timer.seconds(60)
   # Fallback CPU percent written into cache when the sampler fails.
   # Semantically distinct from `LeastCpu.@default_cpu` — that one is the
   # cache-miss default used at selection time; this one is the sampling
@@ -72,13 +82,8 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.Poller do
       cpu_sampler: Keyword.get(opts, :cpu_sampler, &default_cpu_sampler/0)
     }
 
-    {:ok, state, {:continue, :poll}}
-  end
-
-  @impl true
-  def handle_continue(:poll, state) do
-    poll_and_schedule(state)
-    {:noreply, state}
+    schedule_initial_poll(Keyword.get(opts, :poll_startup_jitter, @default_poll_startup_jitter))
+    {:ok, state}
   end
 
   @impl true
@@ -89,12 +94,18 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.Poller do
 
   def handle_info(_msg, state), do: {:noreply, state}
 
+  defp schedule_initial_poll(jitter) when is_integer(jitter) and jitter > 0 do
+    Process.send_after(self(), :poll, :rand.uniform(jitter + 1) - 1)
+  end
+
+  defp schedule_initial_poll(_jitter), do: send(self(), :poll)
+
   defp poll_and_schedule(state) do
     :telemetry.span(
       [:rpc_load_balancer, :least_cpu, :poll],
       %{load_balancer_name: state.load_balancer_name},
       fn ->
-        sample_and_store_local(state)
+        :ok = sample_and_store_local(state)
         poll_remote_nodes(state)
         {:ok, %{load_balancer_name: state.load_balancer_name}}
       end
@@ -114,7 +125,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.Poller do
 
   defp poll_remote_nodes(state) do
     state.load_balancer_name
-    |> Pg.multicall(NodeCpuCache, :get_local, [state.load_balancer_name], @remote_timeout)
+    |> Pg.multicall(NodeCpuCache, :get_local_cpu, [state.load_balancer_name], @remote_timeout)
     |> Enum.each(fn {remote_node, result} ->
       handle_remote_result(result, state.load_balancer_name, remote_node)
     end)
@@ -152,7 +163,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.Poller do
   end
 
   defp store_cpu(load_balancer_name, target_node, cpu) do
-    NodeCpuCache.put(load_balancer_name, target_node, %{
+    NodeCpuCache.put_cpu(load_balancer_name, target_node, %{
       cpu: cpu,
       fetched_at: System.monotonic_time(:millisecond)
     })

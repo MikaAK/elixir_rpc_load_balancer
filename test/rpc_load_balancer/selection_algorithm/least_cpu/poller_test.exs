@@ -1,12 +1,12 @@
 defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.PollerTest do
   use ExUnit.Case, async: true
+  use RpcLoadBalancer.CacheCase
 
   alias RpcLoadBalancer.LoadBalancer.NodeCpuCache
   alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.Poller
 
   defp start_poller!(name, opts \\ []) do
-    start_supervised!(NodeCpuCache.child_spec(name), id: {:ncc, name})
-    default_opts = [load_balancer_name: name, poll_interval: 100]
+    default_opts = [load_balancer_name: name, poll_interval: 100, poll_startup_jitter: 0]
     start_supervised!({Poller, Keyword.merge(default_opts, opts)}, id: name)
     name
   end
@@ -28,7 +28,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.PollerTest do
   defp await_cpu_entry(name) do
     entry =
       poll_until(fn ->
-        case NodeCpuCache.get_local(name) do
+        case NodeCpuCache.get_local_cpu(name) do
           {:ok, %{} = map} -> map
           _ -> nil
         end
@@ -40,7 +40,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.PollerTest do
   defp await_entry_after(name, prev_fetched_at) do
     entry =
       poll_until(fn ->
-        case NodeCpuCache.get_local(name) do
+        case NodeCpuCache.get_local_cpu(name) do
           {:ok, %{fetched_at: ts} = map} when ts > prev_fetched_at -> map
           _ -> nil
         end
@@ -101,6 +101,24 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.PollerTest do
     entry = await_cpu_entry(name)
 
     assert entry.cpu === 42.0
+  end
+
+  test "delays the initial poll when poll_startup_jitter is set" do
+    name = :poller_jitter_delay
+
+    start_supervised!(
+      {Poller,
+       [
+         load_balancer_name: name,
+         poll_interval: 100,
+         poll_startup_jitter: :timer.seconds(30),
+         cpu_sampler: fn -> 25 end
+       ]},
+      id: name
+    )
+
+    Process.sleep(150)
+    assert {:ok, nil} = NodeCpuCache.get_local_cpu(name)
   end
 
   test "emits :telemetry span events on every poll" do

@@ -1,5 +1,6 @@
 defmodule RpcLoadBalancer.LoadBalancerTest do
   use ExUnit.Case, async: true
+  use RpcLoadBalancer.CacheCase
 
   alias RpcLoadBalancer.LoadBalancer.Drainer
   alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm
