@@ -100,28 +100,26 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu do
   @impl true
   def choose_from_nodes(load_balancer_name, node_list, _opts \\ []) do
     %{cpu_cache_ttl: ttl, cpu_threshold: threshold} = load_opts(load_balancer_name)
-    node_cpus = measure_nodes(load_balancer_name, node_list, ttl)
+    node_cpus = measure_nodes(node_list, ttl)
     pick_from_threshold_band(node_cpus, threshold)
   end
 
-  @impl true
-  def on_node_change(_load_balancer_name, {:joined, _nodes}), do: :ok
+  # `on_node_change` is intentionally not implemented: CPU entries are
+  # node-scoped and shared across every load balancer that contains the
+  # node. A single LB losing a member must NOT delete the entry — other
+  # LBs may still reference the same node. Stale entries naturally age
+  # out via `cpu_cache_ttl`.
 
-  def on_node_change(load_balancer_name, {:left, nodes}) do
-    Enum.each(nodes, &NodeCpuCache.delete_cpu(load_balancer_name, &1))
-    :ok
-  end
-
-  defp measure_nodes(load_balancer_name, node_list, ttl) do
+  defp measure_nodes(node_list, ttl) do
     now = System.monotonic_time(:millisecond)
 
     Enum.map(node_list, fn target_node ->
-      {target_node, read_node_cpu(load_balancer_name, target_node, now, ttl)}
+      {target_node, read_node_cpu(target_node, now, ttl)}
     end)
   end
 
-  defp read_node_cpu(load_balancer_name, target_node, now, ttl) do
-    case NodeCpuCache.get_cpu(load_balancer_name, target_node) do
+  defp read_node_cpu(target_node, now, ttl) do
+    case NodeCpuCache.get_cpu(target_node) do
       {:ok, %{cpu: cpu, fetched_at: fetched_at}} when now - fetched_at <= ttl -> cpu
       _ -> @default_cpu
     end

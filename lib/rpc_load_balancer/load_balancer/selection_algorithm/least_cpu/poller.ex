@@ -120,19 +120,19 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.Poller do
 
   defp sample_and_store_local(state) do
     cpu = sample_local_cpu(state.cpu_sampler)
-    store_cpu(state.load_balancer_name, node(), cpu)
+    store_cpu(node(), cpu)
   end
 
   defp poll_remote_nodes(state) do
     state.load_balancer_name
-    |> Pg.multicall(NodeCpuCache, :get_local_cpu, [state.load_balancer_name], @remote_timeout)
+    |> Pg.multicall(NodeCpuCache, :get_local_cpu, [], @remote_timeout)
     |> Enum.each(fn {remote_node, result} ->
       handle_remote_result(result, state.load_balancer_name, remote_node)
     end)
   end
 
-  defp handle_remote_result({:ok, {:ok, %{cpu: cpu}}}, load_balancer_name, remote_node) do
-    store_cpu(load_balancer_name, remote_node, cpu)
+  defp handle_remote_result({:ok, {:ok, %{cpu: cpu}}}, _load_balancer_name, remote_node) do
+    store_cpu(remote_node, cpu)
   end
 
   defp handle_remote_result({:ok, _other}, _load_balancer_name, _remote_node), do: :ok
@@ -162,8 +162,8 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.Poller do
     )
   end
 
-  defp store_cpu(load_balancer_name, target_node, cpu) do
-    NodeCpuCache.put_cpu(load_balancer_name, target_node, %{
+  defp store_cpu(target_node, cpu) do
+    NodeCpuCache.put_cpu(target_node, %{
       cpu: cpu,
       fetched_at: System.monotonic_time(:millisecond)
     })
