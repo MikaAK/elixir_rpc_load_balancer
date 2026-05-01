@@ -22,9 +22,10 @@ defmodule RpcLoadBalancer.CacheCase do
 
   @sandboxed_caches [
     RpcLoadBalancer.LoadBalancer.AlgorithmCache,
+    RpcLoadBalancer.LoadBalancer.HashRingCache,
     RpcLoadBalancer.LoadBalancer.IndexRegistry,
-    RpcLoadBalancer.LoadBalancer.NodeCpuCache,
-    RpcLoadBalancer.LoadBalancer.ValueCache
+    RpcLoadBalancer.LoadBalancer.LoadBalancerOptsCache,
+    RpcLoadBalancer.LoadBalancer.NodeCpuCache
   ]
 
   defmacro __using__(_opts) do

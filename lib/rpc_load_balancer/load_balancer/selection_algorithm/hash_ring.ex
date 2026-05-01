@@ -31,15 +31,19 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.HashRing do
 
   @behaviour RpcLoadBalancer.LoadBalancer.SelectionAlgorithm
 
-  alias RpcLoadBalancer.LoadBalancer.ValueCache
+  alias RpcLoadBalancer.LoadBalancer.HashRingCache
+  alias RpcLoadBalancer.LoadBalancer.LoadBalancerOptsCache
 
   @default_weight 128
 
   @impl true
+  def caches, do: [HashRingCache]
+
+  @impl true
   def init(load_balancer_name, opts) do
     weight = Keyword.get(opts, :weight, @default_weight)
-    ValueCache.put({load_balancer_name, :hash_ring_weight}, nil, weight)
-    ValueCache.put({load_balancer_name, :hash_ring}, nil, nil)
+    LoadBalancerOptsCache.put({load_balancer_name, :hash_ring_weight}, nil, weight)
+    :ok = HashRingCache.delete_ring(load_balancer_name)
     :ok
   end
 
@@ -71,14 +75,14 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.HashRing do
 
   @impl true
   def on_node_change(load_balancer_name, {_event, _nodes}) do
-    ValueCache.put({load_balancer_name, :hash_ring}, nil, nil)
+    :ok = HashRingCache.delete_ring(load_balancer_name)
     :ok
   end
 
   defp get_or_build_ring(load_balancer_name, node_list) do
-    case get_ring(load_balancer_name) do
-      nil -> rebuild_ring(load_balancer_name, node_list)
-      ring -> ring
+    case HashRingCache.get_ring(load_balancer_name) do
+      {:ok, nil} -> rebuild_ring(load_balancer_name, node_list)
+      {:ok, ring} -> ring
     end
   end
 
@@ -90,17 +94,12 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.HashRing do
         HashRing.add_node(ring, node, weight)
       end)
 
-    ValueCache.put({load_balancer_name, :hash_ring}, nil, ring)
-    ring
-  end
-
-  defp get_ring(load_balancer_name) do
-    {:ok, ring} = ValueCache.get({load_balancer_name, :hash_ring})
+    :ok = HashRingCache.put_ring(load_balancer_name, ring)
     ring
   end
 
   defp get_weight(load_balancer_name) do
-    case ValueCache.get({load_balancer_name, :hash_ring_weight}) do
+    case LoadBalancerOptsCache.get({load_balancer_name, :hash_ring_weight}) do
       {:ok, nil} -> @default_weight
       {:ok, weight} -> weight
     end

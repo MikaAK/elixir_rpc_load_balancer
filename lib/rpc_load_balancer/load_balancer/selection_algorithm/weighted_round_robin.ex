@@ -20,7 +20,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.WeightedRoundRobin do
   @behaviour RpcLoadBalancer.LoadBalancer.SelectionAlgorithm
 
   alias RpcLoadBalancer.LoadBalancer.CounterCache
-  alias RpcLoadBalancer.LoadBalancer.ValueCache
+  alias RpcLoadBalancer.LoadBalancer.LoadBalancerOptsCache
 
   @counter_slot 2
 
@@ -28,7 +28,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.WeightedRoundRobin do
   def init(load_balancer_name, opts) do
     weights = Keyword.get(opts, :weights, %{})
     CounterCache.register(load_balancer_name, @counter_slot)
-    ValueCache.put({load_balancer_name, :weights}, nil, weights)
+    LoadBalancerOptsCache.put({load_balancer_name, :weights}, nil, weights)
     :ok
   end
 
@@ -50,7 +50,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.WeightedRoundRobin do
   end
 
   defp get_weights(load_balancer_name) do
-    case ValueCache.get({load_balancer_name, :weights}) do
+    case LoadBalancerOptsCache.get({load_balancer_name, :weights}) do
       {:ok, nil} -> %{}
       {:ok, weights} -> weights
     end

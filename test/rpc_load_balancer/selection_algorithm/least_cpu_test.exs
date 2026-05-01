@@ -6,7 +6,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
   alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm
   alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu
   alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.Poller
-  alias RpcLoadBalancer.LoadBalancer.ValueCache
+  alias RpcLoadBalancer.LoadBalancer.LoadBalancerOptsCache
 
   defp start_lb!(name, opts \\ []) do
     default_opts = [
@@ -37,13 +37,13 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
   defp await_algorithm_init!(name) do
     opts =
       poll_until(fn ->
-        case ValueCache.get({name, :cpu_opts}) do
+        case LoadBalancerOptsCache.get({name, :cpu_opts}) do
           {:ok, %{} = opts} -> opts
           _ -> nil
         end
       end)
 
-    opts || flunk("LeastCpu.init/2 did not populate ValueCache for #{inspect(name)}")
+    opts || flunk("LeastCpu.init/2 did not populate LoadBalancerOptsCache for #{inspect(name)}")
   end
 
   defp seed_cpu!(metrics) do
@@ -165,11 +165,11 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
     assert {:ok, ^fresh_entry} = NodeCpuCache.get_cpu(:node_b)
   end
 
-  test "algorithm_opts flow through init/2 into ValueCache" do
+  test "algorithm_opts flow through init/2 into LoadBalancerOptsCache" do
     name = start_lb!(:lcpu_opts_flow, cpu_threshold: 7.5, cpu_cache_ttl: 20_000)
 
     assert {:ok, %{cpu_threshold: 7.5, cpu_cache_ttl: 20_000}} =
-             ValueCache.get({name, :cpu_opts})
+             LoadBalancerOptsCache.get({name, :cpu_opts})
   end
 
   test "poller is registered before the LoadBalancer GenServer finishes booting" do

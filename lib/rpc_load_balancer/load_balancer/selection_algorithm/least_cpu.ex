@@ -44,9 +44,9 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu do
 
   @behaviour RpcLoadBalancer.LoadBalancer.SelectionAlgorithm
 
+  alias RpcLoadBalancer.LoadBalancer.LoadBalancerOptsCache
   alias RpcLoadBalancer.LoadBalancer.NodeCpuCache
   alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.Poller
-  alias RpcLoadBalancer.LoadBalancer.ValueCache
 
   # Cache-miss default used at selection time. The Poller has its own
   # sampling-failure fallback — they're kept separate so tuning one doesn't
@@ -89,7 +89,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu do
 
   @impl true
   def init(load_balancer_name, opts) do
-    ValueCache.put({load_balancer_name, :cpu_opts}, nil, %{
+    LoadBalancerOptsCache.put({load_balancer_name, :cpu_opts}, nil, %{
       cpu_cache_ttl: Keyword.get(opts, :cpu_cache_ttl, @default_cpu_cache_ttl),
       cpu_threshold: Keyword.get(opts, :cpu_threshold, @default_cpu_threshold)
     })
@@ -135,7 +135,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu do
   end
 
   defp load_opts(load_balancer_name) do
-    case ValueCache.get({load_balancer_name, :cpu_opts}) do
+    case LoadBalancerOptsCache.get({load_balancer_name, :cpu_opts}) do
       {:ok, %{} = opts} -> opts
       _ -> %{cpu_cache_ttl: @default_cpu_cache_ttl, cpu_threshold: @default_cpu_threshold}
     end
