@@ -28,8 +28,8 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.PowerOfTwo do
   def choose_from_nodes(load_balancer_name, node_list, _opts) do
     [candidate_a, candidate_b] = Enum.take_random(node_list, 2)
 
-    count_a = CounterCache.lookup_node_count(load_balancer_name, candidate_a)
-    count_b = CounterCache.lookup_node_count(load_balancer_name, candidate_b)
+    count_a = CounterCache.get_node_count(load_balancer_name, candidate_a)
+    count_b = CounterCache.get_node_count(load_balancer_name, candidate_b)
 
     chosen = if count_a <= count_b, do: candidate_a, else: candidate_b
     CounterCache.increment_node(load_balancer_name, chosen)

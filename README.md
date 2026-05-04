@@ -94,14 +94,14 @@ When the `:load_balancer` option is present, the first argument (node) is ignore
 
 | Algorithm | Description | Selection cost (8 nodes) | Scales with cluster size |
 |---|---|---:|---|
-| `CallDirect` | Executes locally via `apply/3`, bypassing `:erpc` — ideal for tests | **0.04 μs** / 23.8 M ips | constant |
-| `Random` | Picks a random node (default) | **0.11 μs** / 9.1 M ips | constant |
-| `HashRing` | Consistent hash-based routing via a `:key` option | **0.25 μs** / 4.0 M ips | constant (`:persistent_term` ring) |
-| `RoundRobin` | Cycles through nodes with an atomic counter | **0.79 μs** / 1.26 M ips | constant |
-| `WeightedRoundRobin` | Round robin with configurable per-node weights | **0.83 μs** / 1.21 M ips | constant (cached expanded list) |
-| `LeastConnections` | Selects the node with fewest active connections | **1.23 μs** / 810 K ips | linear (`:counters` read per node) |
-| `PowerOfTwo` | Picks 2 random nodes, chooses the one with fewer connections | **1.30 μs** / 770 K ips | sub-linear (2 `:counters` reads) |
-| `LeastCpu` | Selects the node with the lowest cached CPU utilization | **13.5 μs** / 74 K ips | linear (CPU entry read per node) |
+| `CallDirect` | Executes locally via `apply/3`, bypassing `:erpc` — ideal for tests | **0.04 μs** / 23.2 M ips | constant |
+| `Random` | Picks a random node (default) | **0.11 μs** / 8.7 M ips | constant |
+| `RoundRobin` | Cycles through nodes with an atomic counter | **0.77 μs** / 1.29 M ips | constant |
+| `WeightedRoundRobin` | Round robin with configurable per-node weights | **0.88 μs** / 1.14 M ips | constant (cached expanded list) |
+| `LeastConnections` | Selects the node with fewest active connections | **1.18 μs** / 840 K ips | linear (`:counters` read per node) |
+| `PowerOfTwo` | Picks 2 random nodes, chooses the one with fewer connections | **1.32 μs** / 760 K ips | sub-linear (2 `:counters` reads) |
+| `HashRing` | Consistent hash-based routing via a `:key` option | **2.02 μs** / 490 K ips | near-constant (cached ring) |
+| `LeastCpu` | Selects the node with the lowest cached CPU utilization | **12.0 μs** / 83 K ips | linear (CPU entry read per node) |
 
 Numbers from `mix run bench/select_node_bench.exs` on Apple M1 Max,
 Elixir 1.19.5 / OTP 28.3.3, 8-node synthetic cluster, single process.

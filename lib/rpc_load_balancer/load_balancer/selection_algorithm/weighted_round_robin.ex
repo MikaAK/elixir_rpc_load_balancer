@@ -6,11 +6,18 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.WeightedRoundRobin do
   values are positive integers representing relative capacity. Nodes with
   higher weights receive proportionally more traffic.
 
-  The expanded node list — node names duplicated according to weight —
-  is cached in `:persistent_term` keyed by the load balancer's running
-  node membership. The cache is rebuilt only when membership changes,
-  so the steady-state hot path is `Enum.at/2` on the cached list plus
-  one atomic counter increment.
+  Storage:
+    * `:weights` (set once at `init/2`) lives in `:persistent_term`
+      keyed by `{__MODULE__, lb_name, :weights}`.
+    * The expanded node list (the weight map projected into a flat
+      list, one entry per weight unit) lives in `WeightedRoundRobinCache`
+      (ETS). It's rebuilt on every `on_node_change` so storing it in PT
+      would trigger continuous global GC in clusters with steady
+      flapping; ETS writes are local and lock-free under
+      `write_concurrency: true`.
+
+  Steady-state hot path is one ETS lookup, one atomic counter
+  increment, and an `Enum.at/2` into the cached expanded list.
 
   ## Usage
 
@@ -26,16 +33,19 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.WeightedRoundRobin do
   @behaviour RpcLoadBalancer.LoadBalancer.SelectionAlgorithm
 
   alias RpcLoadBalancer.LoadBalancer.CounterCache
-  alias RpcLoadBalancer.LoadBalancer.LoadBalancerOptsCache
+  alias RpcLoadBalancer.LoadBalancer.WeightedRoundRobinCache
 
   @counter_slot 2
+
+  @impl true
+  def caches, do: [WeightedRoundRobinCache]
 
   @impl true
   def init(load_balancer_name, opts) do
     weights = Keyword.get(opts, :weights, %{})
     CounterCache.register(load_balancer_name, @counter_slot)
-    LoadBalancerOptsCache.put({load_balancer_name, :weights}, nil, weights)
-    erase_expanded(load_balancer_name)
+    :persistent_term.put(weights_pt_key(load_balancer_name), weights)
+    WeightedRoundRobinCache.delete_expanded(load_balancer_name)
     :ok
   end
 
@@ -50,46 +60,35 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.WeightedRoundRobin do
 
   @impl true
   def on_node_change(load_balancer_name, {_event, _nodes}) do
-    erase_expanded(load_balancer_name)
+    WeightedRoundRobinCache.delete_expanded(load_balancer_name)
     :ok
   end
 
   defp get_or_build_expanded(load_balancer_name, node_list) do
-    case :persistent_term.get(expanded_pt_key(load_balancer_name), nil) do
-      {^node_list, expanded} ->
-        expanded
-
-      _ ->
-        build_expanded(load_balancer_name, node_list)
+    case WeightedRoundRobinCache.get_expanded(load_balancer_name) do
+      {^node_list, expanded} -> expanded
+      _ -> build_expanded(load_balancer_name, node_list)
     end
   end
 
   defp build_expanded(load_balancer_name, node_list) do
     weights = get_weights(load_balancer_name)
     expanded = expand_node_list(node_list, weights)
-    :persistent_term.put(expanded_pt_key(load_balancer_name), {node_list, expanded})
+    WeightedRoundRobinCache.put_expanded(load_balancer_name, node_list, expanded)
     expanded
   end
 
-  defp erase_expanded(load_balancer_name) do
-    _ = :persistent_term.erase(expanded_pt_key(load_balancer_name))
-    :ok
-  end
+  defp weights_pt_key(load_balancer_name), do: {__MODULE__, load_balancer_name, :weights}
 
-  defp expanded_pt_key(load_balancer_name), do: {__MODULE__, load_balancer_name}
+  defp get_weights(load_balancer_name) do
+    :persistent_term.get(weights_pt_key(load_balancer_name), %{})
+  end
 
   defp expand_node_list(node_list, weights) do
     Enum.flat_map(node_list, fn node ->
       weight = Map.get(weights, node, 1)
       List.duplicate(node, weight)
     end)
-  end
-
-  defp get_weights(load_balancer_name) do
-    case LoadBalancerOptsCache.lookup({load_balancer_name, :weights}) do
-      nil -> %{}
-      weights -> weights
-    end
   end
 
   defp maybe_reset_count(index, count) when count > 10_000_000 do

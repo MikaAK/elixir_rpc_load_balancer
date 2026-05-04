@@ -32,21 +32,16 @@ defmodule RpcLoadBalancer.LoadBalancer.NodeCpuCache do
     put(target_node, nil, entry)
   end
 
-  @spec get_cpu(node()) :: {:ok, entry() | nil} | {:error, ErrorMessage.t()}
-  def get_cpu(target_node) do
-    get(target_node)
-  end
-
   @doc """
-  Hot-path lookup that bypasses the telemetry wrapper.
+  Read a node's cached CPU entry without telemetry overhead.
 
   Calls the configured cache adapter directly so per-node reads inside
   `LeastCpu.choose_from_nodes/3` don't pay `:telemetry.span/3` overhead
   for every node in the cluster. Returns `nil` when no entry exists,
   letting the caller fall back to a default.
   """
-  @spec lookup_cpu(node()) :: entry() | nil
-  def lookup_cpu(target_node) do
+  @spec get_cpu(node()) :: entry() | nil
+  def get_cpu(target_node) do
     case cache_adapter().get(@cache_name, target_node) do
       {:ok, nil} -> nil
       {:ok, value} -> Cache.TermEncoder.decode(value)

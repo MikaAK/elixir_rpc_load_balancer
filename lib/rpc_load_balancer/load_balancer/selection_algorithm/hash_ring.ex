@@ -11,13 +11,14 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.HashRing do
 
   When no key is provided, falls back to random selection.
 
-  The ring is stored directly in `:persistent_term` so that the read
-  path on every selection is a single zero-copy term lookup with no
-  process hops, no ETS contention, and no telemetry-span wrapping.
-  Topology-change events trigger a `:persistent_term.put/2`, which is
-  costly (it walks every process referencing the term table), but
-  topology change is rare and selection happens millions of times
-  per second — the asymmetry matches `:persistent_term`'s design.
+  Storage:
+    * `:weight` (compile-time-ish — set once at `init/2`) lives in
+      `:persistent_term` keyed by `{__MODULE__, lb_name, :weight}`.
+      Write-once is the access pattern `:persistent_term` is designed
+      for.
+    * The ring itself lives in `HashRingCache` (ETS). It's rewritten
+      on every `on_node_change` event, so PT would mean continuous
+      global GC sweeps in clusters with steady flapping.
 
   ## Usage
 
@@ -39,15 +40,18 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.HashRing do
 
   @behaviour RpcLoadBalancer.LoadBalancer.SelectionAlgorithm
 
-  alias RpcLoadBalancer.LoadBalancer.LoadBalancerOptsCache
+  alias RpcLoadBalancer.LoadBalancer.HashRingCache
 
   @default_weight 128
 
   @impl true
+  def caches, do: [HashRingCache]
+
+  @impl true
   def init(load_balancer_name, opts) do
     weight = Keyword.get(opts, :weight, @default_weight)
-    LoadBalancerOptsCache.put({load_balancer_name, :hash_ring_weight}, nil, weight)
-    erase_ring(load_balancer_name)
+    :persistent_term.put(weight_pt_key(load_balancer_name), weight)
+    HashRingCache.delete_ring(load_balancer_name)
     :ok
   end
 
@@ -79,12 +83,12 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.HashRing do
 
   @impl true
   def on_node_change(load_balancer_name, {_event, _nodes}) do
-    erase_ring(load_balancer_name)
+    HashRingCache.delete_ring(load_balancer_name)
     :ok
   end
 
   defp get_or_build_ring(load_balancer_name, node_list) do
-    case :persistent_term.get(ring_pt_key(load_balancer_name), nil) do
+    case HashRingCache.get_ring(load_balancer_name) do
       nil -> rebuild_ring(load_balancer_name, node_list)
       ring -> ring
     end
@@ -98,21 +102,13 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.HashRing do
         HashRing.add_node(ring, node, weight)
       end)
 
-    :persistent_term.put(ring_pt_key(load_balancer_name), ring)
+    HashRingCache.put_ring(load_balancer_name, ring)
     ring
   end
 
-  defp erase_ring(load_balancer_name) do
-    _ = :persistent_term.erase(ring_pt_key(load_balancer_name))
-    :ok
-  end
-
-  defp ring_pt_key(load_balancer_name), do: {__MODULE__, load_balancer_name}
+  defp weight_pt_key(load_balancer_name), do: {__MODULE__, load_balancer_name, :weight}
 
   defp get_weight(load_balancer_name) do
-    case LoadBalancerOptsCache.lookup({load_balancer_name, :hash_ring_weight}) do
-      nil -> @default_weight
-      weight -> weight
-    end
+    :persistent_term.get(weight_pt_key(load_balancer_name), @default_weight)
   end
 end

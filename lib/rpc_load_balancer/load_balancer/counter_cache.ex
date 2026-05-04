@@ -32,20 +32,6 @@ defmodule RpcLoadBalancer.LoadBalancer.CounterCache do
     IndexRegistry.get_or_register(@cache_name, {:slot, load_balancer_name, slot_id})
   end
 
-  @doc """
-  Lookup of a node's connection count without telemetry overhead.
-
-  Returns 0 for nodes that haven't been registered yet so callers can
-  use a missing entry as the natural "lowest" candidate.
-  """
-  @spec lookup_node_count(atom(), node()) :: non_neg_integer()
-  def lookup_node_count(load_balancer_name, node) do
-    case IndexRegistry.lookup_index(@cache_name, {:conn, load_balancer_name, node}) do
-      nil -> 0
-      index -> :counters.get(counter_ref(), index + 1)
-    end
-  end
-
   @spec get_and_increment(non_neg_integer()) :: non_neg_integer()
   def get_and_increment(index) do
     :ok = increment(index)
@@ -73,10 +59,20 @@ defmodule RpcLoadBalancer.LoadBalancer.CounterCache do
     decrement(register_node(load_balancer_name, node))
   end
 
+  @doc """
+  Read a node's connection count without telemetry overhead.
+
+  Goes straight to `:counters.get/2`, skipping the
+  `:telemetry.span/3`-wrapped `Cache.get/1`. Returns 0 for nodes that
+  haven't been registered yet so callers can treat a missing entry as
+  the natural "lowest" candidate.
+  """
   @spec get_node_count(atom(), node()) :: non_neg_integer()
   def get_node_count(load_balancer_name, node) do
-    {:ok, count} = get(register_node(load_balancer_name, node))
-    count || 0
+    case IndexRegistry.get_index(@cache_name, {:conn, load_balancer_name, node}) do
+      nil -> 0
+      index -> :counters.get(counter_ref(), index + 1)
+    end
   end
 
   @spec erase_node_counter(atom(), node()) :: :ok

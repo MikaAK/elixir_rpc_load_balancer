@@ -44,7 +44,6 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu do
 
   @behaviour RpcLoadBalancer.LoadBalancer.SelectionAlgorithm
 
-  alias RpcLoadBalancer.LoadBalancer.LoadBalancerOptsCache
   alias RpcLoadBalancer.LoadBalancer.NodeCpuCache
   alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.Poller
 
@@ -89,13 +88,15 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu do
 
   @impl true
   def init(load_balancer_name, opts) do
-    LoadBalancerOptsCache.put({load_balancer_name, :cpu_opts}, nil, %{
+    :persistent_term.put(opts_pt_key(load_balancer_name), %{
       cpu_cache_ttl: Keyword.get(opts, :cpu_cache_ttl, @default_cpu_cache_ttl),
       cpu_threshold: Keyword.get(opts, :cpu_threshold, @default_cpu_threshold)
     })
 
     :ok
   end
+
+  defp opts_pt_key(load_balancer_name), do: {__MODULE__, load_balancer_name, :opts}
 
   @impl true
   def choose_from_nodes(load_balancer_name, node_list, _opts \\ []) do
@@ -111,7 +112,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu do
   # out via `cpu_cache_ttl`.
 
   defp read_node_cpu(target_node, now, ttl) do
-    case NodeCpuCache.lookup_cpu(target_node) do
+    case NodeCpuCache.get_cpu(target_node) do
       %{cpu: cpu, fetched_at: fetched_at} when now - fetched_at <= ttl -> cpu
       _ -> @default_cpu
     end
@@ -137,9 +138,9 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu do
   end
 
   defp load_opts(load_balancer_name) do
-    case LoadBalancerOptsCache.lookup({load_balancer_name, :cpu_opts}) do
-      %{} = opts -> opts
-      _ -> %{cpu_cache_ttl: @default_cpu_cache_ttl, cpu_threshold: @default_cpu_threshold}
-    end
+    :persistent_term.get(opts_pt_key(load_balancer_name), %{
+      cpu_cache_ttl: @default_cpu_cache_ttl,
+      cpu_threshold: @default_cpu_threshold
+    })
   end
 end

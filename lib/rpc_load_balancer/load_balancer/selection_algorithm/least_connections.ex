@@ -7,7 +7,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastConnections do
   `release_node/2` must be called to decrement the counter. The convenience
   API in `RpcLoadBalancer.LoadBalancer.call/5` handles this automatically.
 
-  Hot-path implementation uses `CounterCache.lookup_node_count/2` (which
+  Hot-path implementation uses `CounterCache.get_node_count/2` (which
   bypasses the telemetry wrapper) and a single-pass `Enum.reduce/3` that
   allocates one tuple instead of building an intermediate list.
   """
@@ -48,11 +48,11 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastConnections do
   end
 
   defp pick_least_loaded(load_balancer_name, first, rest) do
-    initial_count = CounterCache.lookup_node_count(load_balancer_name, first)
+    initial_count = CounterCache.get_node_count(load_balancer_name, first)
 
     {best_node, _best_count} =
       Enum.reduce(rest, {first, initial_count}, fn node, {_best_node, best_count} = best ->
-        count = CounterCache.lookup_node_count(load_balancer_name, node)
+        count = CounterCache.get_node_count(load_balancer_name, node)
         if count < best_count, do: {node, count}, else: best
       end)
 
