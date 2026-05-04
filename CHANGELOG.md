@@ -1,3 +1,13 @@
+## 0.2.2
+
+### Features
+- Add `LeastCpu` selection algorithm that routes calls to the node with the lowest CPU utilization, sampled via `:cpu_sup` and cached in `:persistent_term`
+- Add optional `child_specs/2` callback to the `SelectionAlgorithm` behaviour so algorithms can contribute their own supervised children
+
+### Fixes
+- Ensure the configured selection algorithm module is loaded before checking for `child_specs/2`, preventing startup races
+- Use `Cache.PersistentTerm` for `NodeCpuCache` and fix the `:cpu_sup` apply call to stabilize CPU sampling
+
 ## 0.2.1
 
 ### Features
