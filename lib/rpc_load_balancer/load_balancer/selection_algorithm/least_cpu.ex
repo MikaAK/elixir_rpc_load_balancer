@@ -111,7 +111,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu do
   # out via `cpu_cache_ttl`.
 
   defp read_node_cpu(target_node, now, ttl) do
-    case NodeCpuCache.read_cpu(target_node) do
+    case NodeCpuCache.lookup_cpu(target_node) do
       %{cpu: cpu, fetched_at: fetched_at} when now - fetched_at <= ttl -> cpu
       _ -> @default_cpu
     end
@@ -137,7 +137,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu do
   end
 
   defp load_opts(load_balancer_name) do
-    case LoadBalancerOptsCache.read({load_balancer_name, :cpu_opts}) do
+    case LoadBalancerOptsCache.lookup({load_balancer_name, :cpu_opts}) do
       %{} = opts -> opts
       _ -> %{cpu_cache_ttl: @default_cpu_cache_ttl, cpu_threshold: @default_cpu_threshold}
     end

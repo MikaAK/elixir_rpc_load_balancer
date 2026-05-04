@@ -110,7 +110,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.HashRing do
   defp ring_pt_key(load_balancer_name), do: {__MODULE__, load_balancer_name}
 
   defp get_weight(load_balancer_name) do
-    case LoadBalancerOptsCache.read({load_balancer_name, :hash_ring_weight}) do
+    case LoadBalancerOptsCache.lookup({load_balancer_name, :hash_ring_weight}) do
       nil -> @default_weight
       weight -> weight
     end

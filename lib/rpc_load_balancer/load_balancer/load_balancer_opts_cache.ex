@@ -23,15 +23,15 @@ defmodule RpcLoadBalancer.LoadBalancer.LoadBalancerOptsCache do
     opts: []
 
   @doc """
-  Hot-path reader that bypasses the telemetry wrapper.
+  Hot-path lookup that bypasses the telemetry wrapper.
 
   Calls the configured cache adapter directly so algorithms that look
   up parsed options on every selection (e.g. `HashRing` ring weight,
   `LeastCpu` thresholds) don't pay telemetry-span overhead for what
   is functionally a constant.
   """
-  @spec read(term()) :: term() | nil
-  def read(key) do
+  @spec lookup(term()) :: term() | nil
+  def lookup(key) do
     case cache_adapter().get(@cache_name, key) do
       {:ok, nil} -> nil
       {:ok, value} -> Cache.TermEncoder.decode(value)

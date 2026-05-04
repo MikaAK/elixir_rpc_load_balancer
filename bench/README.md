@@ -84,7 +84,7 @@ sampler so it never fires during the benchmark.
    every attached handler. For sub-microsecond operations this
    dominates the read cost; under parallel load the handler dispatch
    becomes a serialization point. Fix: every cache that's read on the
-   hot path now exposes a `read_*` function that goes straight to the
+   hot path now exposes a `lookup_*` function that goes straight to the
    adapter, skipping the telemetry wrapper. Counters do
    `:counters.get/2`, persistent-term reads do
    `:persistent_term.get/2` + `Cache.TermEncoder.decode/1`.

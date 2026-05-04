@@ -38,15 +38,15 @@ defmodule RpcLoadBalancer.LoadBalancer.NodeCpuCache do
   end
 
   @doc """
-  Hot-path reader that bypasses the telemetry wrapper.
+  Hot-path lookup that bypasses the telemetry wrapper.
 
   Calls the configured cache adapter directly so per-node reads inside
   `LeastCpu.choose_from_nodes/3` don't pay `:telemetry.span/3` overhead
   for every node in the cluster. Returns `nil` when no entry exists,
   letting the caller fall back to a default.
   """
-  @spec read_cpu(node()) :: entry() | nil
-  def read_cpu(target_node) do
+  @spec lookup_cpu(node()) :: entry() | nil
+  def lookup_cpu(target_node) do
     case cache_adapter().get(@cache_name, target_node) do
       {:ok, nil} -> nil
       {:ok, value} -> Cache.TermEncoder.decode(value)

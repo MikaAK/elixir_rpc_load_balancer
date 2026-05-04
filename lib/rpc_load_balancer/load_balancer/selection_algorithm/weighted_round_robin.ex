@@ -86,7 +86,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.WeightedRoundRobin do
   end
 
   defp get_weights(load_balancer_name) do
-    case LoadBalancerOptsCache.read({load_balancer_name, :weights}) do
+    case LoadBalancerOptsCache.lookup({load_balancer_name, :weights}) do
       nil -> %{}
       weights -> weights
     end

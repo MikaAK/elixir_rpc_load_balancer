@@ -33,13 +33,13 @@ defmodule RpcLoadBalancer.LoadBalancer.CounterCache do
   end
 
   @doc """
-  Fast read of a node's connection count without telemetry overhead.
+  Lookup of a node's connection count without telemetry overhead.
 
   Returns 0 for nodes that haven't been registered yet so callers can
   use a missing entry as the natural "lowest" candidate.
   """
-  @spec read_node_count(atom(), node()) :: non_neg_integer()
-  def read_node_count(load_balancer_name, node) do
+  @spec lookup_node_count(atom(), node()) :: non_neg_integer()
+  def lookup_node_count(load_balancer_name, node) do
     case IndexRegistry.lookup_index(@cache_name, {:conn, load_balancer_name, node}) do
       nil -> 0
       index -> :counters.get(counter_ref(), index + 1)
