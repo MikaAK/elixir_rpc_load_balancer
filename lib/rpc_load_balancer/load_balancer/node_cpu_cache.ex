@@ -21,7 +21,7 @@ defmodule RpcLoadBalancer.LoadBalancer.NodeCpuCache do
     adapter: Cache.PersistentTerm,
     name: :rpc_lb_node_cpu_cache,
     sandbox?: Mix.env() === :test,
-    opts: [type: :set, read_concurrency: true, write_concurrency: true]
+    opts: []
 
   @type entry :: %{cpu: float(), fetched_at: integer()}
 

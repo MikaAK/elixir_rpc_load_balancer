@@ -4,7 +4,7 @@ defmodule RpcLoadBalancer.MixProject do
   def project do
     [
       app: :rpc_load_balancer,
-      version: "0.2.1",
+      version: "0.2.2",
       elixir: "~> 1.13",
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
@@ -54,6 +54,8 @@ defmodule RpcLoadBalancer.MixProject do
 
       {:libring, "~> 1.7"},
       {:castore, "~> 1.0"},
+
+      {:benchee, "~> 1.3", only: :dev, runtime: false},
 
       {:credo, "~> 1.6", only: [:test, :dev], runtime: false},
       {:blitz_credo_checks, "~> 0.1", only: [:test, :dev], runtime: false},
