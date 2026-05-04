@@ -43,8 +43,6 @@ defmodule RpcLoadBalancerTest do
             algorithm_opts: [weights: %{node() => 1}]
           )
 
-        Process.sleep(100)
-
         assert {:ok, node()} === RpcLoadBalancer.select_node(@lb_name)
       end
 
@@ -57,8 +55,6 @@ defmodule RpcLoadBalancerTest do
             selection_algorithm: @algorithm,
             algorithm_opts: [weights: %{node() => 1}]
           )
-
-        Process.sleep(100)
 
         assert {:ok, :integration_result} ===
                  RpcLoadBalancer.call(node(), Kernel, :apply, [fn -> :integration_result end, []],
@@ -76,8 +72,6 @@ defmodule RpcLoadBalancerTest do
             algorithm_opts: [weights: %{node() => 1}]
           )
 
-        Process.sleep(100)
-
         assert :ok ===
                  RpcLoadBalancer.cast(node(), Kernel, :apply, [fn -> :ok end, []],
                    load_balancer: lb_name
@@ -94,8 +88,6 @@ defmodule RpcLoadBalancerTest do
             algorithm_opts: [weights: %{node() => 1}]
           )
 
-        Process.sleep(100)
-
         assert {:ok, [node()]} === RpcLoadBalancer.get_members(lb_name)
       end
     end
@@ -106,8 +98,6 @@ defmodule RpcLoadBalancerTest do
           name: :integration_call_direct_call,
           selection_algorithm: SelectionAlgorithm.CallDirect
         )
-
-      Process.sleep(100)
 
       assert {:ok, :direct_result} ===
                RpcLoadBalancer.call(node(), Kernel, :apply, [fn -> :direct_result end, []],
@@ -123,8 +113,6 @@ defmodule RpcLoadBalancerTest do
           name: :integration_call_direct_cast,
           selection_algorithm: SelectionAlgorithm.CallDirect
         )
-
-      Process.sleep(100)
 
       assert :ok ===
                RpcLoadBalancer.cast(node(), Kernel, :apply, [fn -> send(test_pid, :cast_executed) end, []],

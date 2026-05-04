@@ -2,7 +2,7 @@ defmodule RpcLoadBalancer.LoadBalancer.AlgorithmCache do
   use Cache,
     adapter: Cache.PersistentTerm,
     name: :rpc_lb_algorithm_cache,
-    sandbox?: false,
+    sandbox?: Mix.env() === :test,
     opts: []
 
   @spec get_algorithm(atom()) :: {:ok, module() | nil} | {:error, ErrorMessage.t()}

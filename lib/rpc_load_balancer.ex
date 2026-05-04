@@ -37,17 +37,22 @@ defmodule RpcLoadBalancer do
 
   @impl true
   def init(opts) do
-    children = [
-      {Cache,
-       [
-         RpcLoadBalancer.LoadBalancer.IndexRegistry,
-         RpcLoadBalancer.LoadBalancer.AlgorithmCache,
-         RpcLoadBalancer.LoadBalancer.ValueCache,
-         RpcLoadBalancer.LoadBalancer.DrainerCache,
-         RpcLoadBalancer.LoadBalancer.CounterCache
-       ]},
-      {RpcLoadBalancer.LoadBalancer, opts}
-    ]
+    algorithm = Keyword.get(opts, :selection_algorithm, SelectionAlgorithm.Random)
+    algorithm_opts = Keyword.get(opts, :algorithm_opts, [])
+    name = Keyword.fetch!(opts, :name)
+
+    algorithm_children = SelectionAlgorithm.child_specs(algorithm, name, algorithm_opts)
+
+    # Algorithm children (pollers, counters) must be registered BEFORE the
+    # LoadBalancer GenServer so that callers who invoke `select_node/1` as
+    # soon as `start_link/1` returns can reach these processes. They do not
+    # need to have produced data yet — selection tolerates a cold cache and
+    # falls back to per-algorithm defaults.
+    #
+    # Shared caches (`{Cache, [...]}`) are owned by `RpcLoadBalancer.Application`,
+    # not this per-LB supervisor — this keeps cache agent lifetime bound to
+    # the VM instead of any individual load balancer.
+    children = algorithm_children ++ [{RpcLoadBalancer.LoadBalancer, opts}]
 
     Supervisor.init(children, strategy: :one_for_all)
   end

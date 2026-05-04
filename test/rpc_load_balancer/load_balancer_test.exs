@@ -1,14 +1,11 @@
 defmodule RpcLoadBalancer.LoadBalancerTest do
   use ExUnit.Case, async: true
+  use RpcLoadBalancer.CacheCase
 
   alias RpcLoadBalancer.LoadBalancer.Drainer
   alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm
 
-  defp start_and_wait!(opts) do
-    {:ok, pid} = RpcLoadBalancer.start_link(opts)
-    Process.sleep(100)
-    {:ok, pid}
-  end
+  defp start_and_wait!(opts), do: RpcLoadBalancer.start_link(opts)
 
   describe "get_members/1" do
     test "returns error when no nodes are registered" do

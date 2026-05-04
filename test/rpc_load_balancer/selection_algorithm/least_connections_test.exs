@@ -1,5 +1,6 @@
 defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastConnectionsTest do
   use ExUnit.Case, async: true
+  use RpcLoadBalancer.CacheCase
 
   alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastConnections
 
