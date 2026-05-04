@@ -9,17 +9,19 @@ defmodule RpcLoadBalancer.LoadBalancer.NodeCpuCache do
   simplifies the cache shape, and lets every Poller across every load
   balancer cooperate on warming the same data.
 
-  Backed by `Cache.ETS` so the cache is one named table for the entire
-  VM. Test sandboxing flows through `Cache.SandboxRegistry`.
-
-  `Cache.PersistentTerm` is unsuitable because the Poller writes every
-  tick and `:persistent_term.put/2` triggers a global GC sweep of every
-  process referencing the term table.
+  Backed by `Cache.PersistentTerm` so the read path on every selection
+  is a single `:persistent_term.get/2`. Writes (one per Poller tick)
+  trigger a global GC sweep, but pollers run on the order of seconds
+  and selection runs millions of times per second — the asymmetry is
+  the right shape for `:persistent_term`. Test sandboxing flows
+  through `Cache.SandboxRegistry`.
   """
+
+  @cache_name :rpc_lb_node_cpu_cache
 
   use Cache,
     adapter: Cache.PersistentTerm,
-    name: :rpc_lb_node_cpu_cache,
+    name: @cache_name,
     sandbox?: Mix.env() === :test,
     opts: []
 
@@ -33,6 +35,23 @@ defmodule RpcLoadBalancer.LoadBalancer.NodeCpuCache do
   @spec get_cpu(node()) :: {:ok, entry() | nil} | {:error, ErrorMessage.t()}
   def get_cpu(target_node) do
     get(target_node)
+  end
+
+  @doc """
+  Hot-path reader that bypasses the telemetry wrapper.
+
+  Calls the configured cache adapter directly so per-node reads inside
+  `LeastCpu.choose_from_nodes/3` don't pay `:telemetry.span/3` overhead
+  for every node in the cluster. Returns `nil` when no entry exists,
+  letting the caller fall back to a default.
+  """
+  @spec read_cpu(node()) :: entry() | nil
+  def read_cpu(target_node) do
+    case cache_adapter().get(@cache_name, target_node) do
+      {:ok, nil} -> nil
+      {:ok, value} -> Cache.TermEncoder.decode(value)
+      _ -> nil
+    end
   end
 
   @spec delete_cpu(node()) :: :ok | {:error, ErrorMessage.t()}

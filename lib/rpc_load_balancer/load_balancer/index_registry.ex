@@ -42,4 +42,20 @@ defmodule RpcLoadBalancer.LoadBalancer.IndexRegistry do
         index
     end
   end
+
+  @doc """
+  Hot-path reader that bypasses the telemetry wrapper.
+
+  Calls the configured cache adapter directly so callers in tight
+  selection loops don't pay `:telemetry.span/3` overhead per read.
+  Returns `nil` when the key has never been registered.
+  """
+  @spec lookup_index(atom(), term()) :: non_neg_integer() | nil
+  def lookup_index(cache_name, key) do
+    case cache_adapter().get(@cache_name, {cache_name, key}) do
+      {:ok, nil} -> nil
+      {:ok, value} -> Cache.TermEncoder.decode(value)
+      _ -> nil
+    end
+  end
 end

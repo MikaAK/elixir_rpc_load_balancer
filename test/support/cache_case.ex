@@ -22,7 +22,6 @@ defmodule RpcLoadBalancer.CacheCase do
 
   @sandboxed_caches [
     RpcLoadBalancer.LoadBalancer.AlgorithmCache,
-    RpcLoadBalancer.LoadBalancer.HashRingCache,
     RpcLoadBalancer.LoadBalancer.IndexRegistry,
     RpcLoadBalancer.LoadBalancer.LoadBalancerOptsCache,
     RpcLoadBalancer.LoadBalancer.NodeCpuCache
