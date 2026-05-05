@@ -61,6 +61,6 @@ defmodule RpcLoadBalancer.LoadBalancer.NodeCpuCache do
   with an empty argument list — the remote node resolves its own
   identity rather than the caller embedding it in the key.
   """
-  @spec get_local_cpu() :: {:ok, entry() | nil} | {:error, ErrorMessage.t()}
+  @spec get_local_cpu() :: entry() | nil
   def get_local_cpu, do: get_cpu(node())
 end
