@@ -143,7 +143,6 @@ defmodule RpcLoadBalancer do
   defp status_from_result({:ok, _}), do: :ok
   defp status_from_result({:error, %ErrorMessage{code: code}}), do: code
   defp status_from_result({:error, _}), do: :error
-  defp status_from_result(_), do: :ok
 
   defp lb_call(load_balancer_name, module, fun, args, opts) do
     call_directly? = Keyword.get(opts, :call_directly?, RpcLoadBalancer.Config.call_directly?())

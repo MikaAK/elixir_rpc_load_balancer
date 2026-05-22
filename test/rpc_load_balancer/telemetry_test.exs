@@ -11,6 +11,8 @@ defmodule RpcLoadBalancer.TelemetryTest do
   setup do
     handler_id = "rpc-lb-telemetry-test-#{System.unique_integer([:positive])}"
     test_pid = self()
+    test_tag = make_ref()
+    Process.put(:rpc_test_tag, test_tag)
 
     :ok =
       :telemetry.attach_many(
@@ -21,13 +23,15 @@ defmodule RpcLoadBalancer.TelemetryTest do
           @event_prefix ++ [:exception]
         ],
         fn event, measurements, metadata, _config ->
-          send(test_pid, {:telemetry, event, measurements, metadata})
+          if Process.get(:rpc_test_tag) === test_tag do
+            send(test_pid, {:telemetry, event, measurements, metadata})
+          end
         end,
         nil
       )
 
     on_exit(fn -> :telemetry.detach(handler_id) end)
-    :ok
+    {:ok, test_tag: test_tag}
   end
 
   describe "call/5" do
@@ -48,14 +52,15 @@ defmodule RpcLoadBalancer.TelemetryTest do
     end
 
     test "stop metadata includes :load_balancer name when configured" do
-      {:ok, _pid} = RpcLoadBalancer.start_link(name: :test_telemetry_lb)
+      lb_name = :"test_telemetry_lb_#{System.unique_integer([:positive])}"
+      {:ok, _pid} = RpcLoadBalancer.start_link(name: lb_name)
 
-      RpcLoadBalancer.call(node(), Kernel, :apply, [fn -> :ok end, []],
-        load_balancer: :test_telemetry_lb
-      )
+      RpcLoadBalancer.call(node(), Kernel, :apply, [fn -> :ok end, []], load_balancer: lb_name)
 
-      assert_receive {:telemetry, [:rpc_load_balancer, :rpc, :stop], _measurements, meta}
-      assert meta.load_balancer === :test_telemetry_lb
+      assert_receive {:telemetry, [:rpc_load_balancer, :rpc, :stop], _measurements,
+                      %{load_balancer: ^lb_name} = meta}
+
+      assert meta.load_balancer === lb_name
     end
 
     test "load_balancer is nil when not configured" do
