@@ -24,6 +24,7 @@ defmodule RpcLoadBalancer do
   @type name :: atom()
 
   @pg_group_name RpcLoadBalancer.LoadBalancer.Pg.pg_group_name()
+  @telemetry_prefix [:rpc_load_balancer, :rpc]
 
   # -------------------------------------------------------------------
   # Supervisor
@@ -98,27 +99,50 @@ defmodule RpcLoadBalancer do
   def call(node, module, fun, args, opts \\ [])
 
   def call(node, module, fun, args, opts) when is_atom(node) do
-    load_balancer_name = Keyword.get(opts, :load_balancer)
+    metadata = build_span_metadata(:call, node, module, fun, opts)
 
-    if load_balancer_name do
-      lb_call(load_balancer_name, module, fun, args, opts)
-    else
-      erpc_call(node, module, fun, args, opts)
-    end
+    :telemetry.span(@telemetry_prefix, metadata, fn ->
+      result =
+        case Keyword.get(opts, :load_balancer) do
+          nil -> erpc_call(node, module, fun, args, opts)
+          name -> lb_call(name, module, fun, args, opts)
+        end
+
+      {result, Map.put(metadata, :status, status_from_result(result))}
+    end)
   end
 
   @spec cast(node(), module(), atom(), [term()], keyword()) :: :ok | {:error, ErrorMessage.t()}
   def cast(node, module, fun, args, opts \\ [])
 
   def cast(node, module, fun, args, opts) when is_atom(node) do
-    load_balancer_name = Keyword.get(opts, :load_balancer)
+    metadata = build_span_metadata(:cast, node, module, fun, opts)
 
-    if load_balancer_name do
-      lb_cast(load_balancer_name, module, fun, args, opts)
-    else
-      erpc_cast(node, module, fun, args)
-    end
+    :telemetry.span(@telemetry_prefix, metadata, fn ->
+      result =
+        case Keyword.get(opts, :load_balancer) do
+          nil -> erpc_cast(node, module, fun, args)
+          name -> lb_cast(name, module, fun, args, opts)
+        end
+
+      {result, Map.put(metadata, :status, status_from_result(result))}
+    end)
   end
+
+  defp build_span_metadata(type, node, module, fun, opts) do
+    %{
+      type: type,
+      node: node,
+      module: inspect(module),
+      function: fun,
+      load_balancer: Keyword.get(opts, :load_balancer)
+    }
+  end
+
+  defp status_from_result(:ok), do: :ok
+  defp status_from_result({:ok, _}), do: :ok
+  defp status_from_result({:error, %ErrorMessage{code: code}}), do: code
+  defp status_from_result({:error, _}), do: :error
 
   defp lb_call(load_balancer_name, module, fun, args, opts) do
     call_directly? = Keyword.get(opts, :call_directly?, RpcLoadBalancer.Config.call_directly?())

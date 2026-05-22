@@ -4,7 +4,7 @@ defmodule RpcLoadBalancer.MixProject do
   def project do
     [
       app: :rpc_load_balancer,
-      version: "0.2.2",
+      version: "0.3.0",
       elixir: "~> 1.13",
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
@@ -50,7 +50,8 @@ defmodule RpcLoadBalancer.MixProject do
       {:error_message, "~> 0.3"},
       {:elixir_cache, ">= 0.4.8"},
       {:elixir_skills, "~> 0.1", optional: true, only: [:test, :dev]},
-
+      {:telemetry, "~> 1.0"},
+      {:telemetry_metrics, "~> 1.0"},
 
       {:libring, "~> 1.7"},
       {:castore, "~> 1.0"},

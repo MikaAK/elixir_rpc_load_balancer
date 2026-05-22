@@ -1,3 +1,10 @@
+## 0.3.0
+
+### Features
+- Wrap `RpcLoadBalancer.call/5` and `RpcLoadBalancer.cast/5` in `:telemetry.span/3` under the prefix `[:rpc_load_balancer, :rpc]`. Emits `:start`, `:stop` (with `:duration` measurement), and `:exception` events. Metadata: `:type` (`:call` or `:cast`), `:node`, `:module` (`inspect/1`'d), `:function`, `:load_balancer` (nullable), and on `:stop` a `:status` derived from the result tuple (`:ok`, `ErrorMessage.code`, or `:error`).
+- Add `RpcLoadBalancer.Metrics` with `metrics/0` returning ready-to-register `Telemetry.Metrics` definitions for `rpc_load_balancer.rpc.request.start.count`, `rpc_load_balancer.rpc.request.stop.count`, and `rpc_load_balancer.rpc.duration.milliseconds`. Drop into any `PrometheusTelemetry` supervisor.
+- Declare `:telemetry` and `:telemetry_metrics` as direct dependencies (previously transitive via `:elixir_cache`).
+
 ## 0.2.2
 
 ### Features
