@@ -46,9 +46,32 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm do
     end
   end
 
-  @spec choose_from_nodes(module(), load_balancer_name(), [node()], keyword()) :: node()
-  def choose_from_nodes(algorithm, load_balancer_name, node_list, opts \\ []) do
-    algorithm.choose_from_nodes(load_balancer_name, node_list, opts)
+  @selected_event [:rpc_load_balancer, :node_selected]
+  @empty_event [:rpc_load_balancer, :node_selected, :empty]
+
+  @spec choose_from_nodes(module(), load_balancer_name(), [node()], keyword()) :: node() | nil
+  def choose_from_nodes(algorithm, load_balancer_name, node_list, opts \\ [])
+
+  def choose_from_nodes(algorithm, load_balancer_name, [], _opts) do
+    :telemetry.execute(
+      @empty_event,
+      %{count: 1},
+      %{algorithm: algorithm, load_balancer: load_balancer_name}
+    )
+
+    nil
+  end
+
+  def choose_from_nodes(algorithm, load_balancer_name, node_list, opts) do
+    node = algorithm.choose_from_nodes(load_balancer_name, node_list, opts)
+
+    :telemetry.execute(
+      @selected_event,
+      %{count: 1, members_count: length(node_list)},
+      %{algorithm: algorithm, load_balancer: load_balancer_name, node: node}
+    )
+
+    node
   end
 
   @spec choose_nodes(module(), load_balancer_name(), [node()], pos_integer(), keyword()) ::
