@@ -49,17 +49,20 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm do
   @selected_event [:rpc_load_balancer, :node_selected]
   @empty_event [:rpc_load_balancer, :node_selected, :empty]
 
-  @spec choose_from_nodes(module(), load_balancer_name(), [node()], keyword()) :: node() | nil
+  @spec choose_from_nodes(module(), load_balancer_name(), [node()], keyword()) :: node()
   def choose_from_nodes(algorithm, load_balancer_name, node_list, opts \\ [])
 
-  def choose_from_nodes(algorithm, load_balancer_name, [], _opts) do
+  def choose_from_nodes(algorithm, load_balancer_name, [], opts) do
     :telemetry.execute(
       @empty_event,
       %{count: 1},
       %{algorithm: algorithm, load_balancer: load_balancer_name}
     )
 
-    nil
+    # Preserve the original algorithm contract — Enum.random/1 raises
+    # Enum.EmptyError on []. Telemetry fires first so observability captures
+    # the miss, then the algorithm raises whatever it would have raised.
+    algorithm.choose_from_nodes(load_balancer_name, [], opts)
   end
 
   def choose_from_nodes(algorithm, load_balancer_name, node_list, opts) do
