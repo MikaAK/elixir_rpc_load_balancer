@@ -78,13 +78,13 @@ defmodule RpcLoadBalancer.SelectionTelemetryTest do
   end
 
   describe "choose_from_nodes/4 emits :node_selected, :empty" do
-    test "random algorithm with empty members list fires :empty event with no :node tag" do
+    test "random algorithm with empty members list fires :empty event then raises" do
       lb_name = :"telemetry_empty_#{System.unique_integer([:positive])}"
       {:ok, _pid} = RpcLoadBalancer.start_link(name: lb_name, selection_algorithm: Random)
 
-      result = SelectionAlgorithm.choose_from_nodes(Random, lb_name, [], [])
-
-      assert is_nil(result)
+      assert_raise Enum.EmptyError, fn ->
+        SelectionAlgorithm.choose_from_nodes(Random, lb_name, [], [])
+      end
 
       assert_receive {:telemetry, [:rpc_load_balancer, :node_selected, :empty], measurements,
                       meta}

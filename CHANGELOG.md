@@ -1,13 +1,10 @@
-## 0.4.0
+## 0.3.1
 
 ### Features
 - Emit `[:rpc_load_balancer, :node_selected]` telemetry after every successful pick by `SelectionAlgorithm.choose_from_nodes/4`. Measurements: `count: 1, members_count: pool_size`. Metadata: `:algorithm` (the algorithm module atom — e.g. `RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.RoundRobin`), `:load_balancer`, `:node`. Reveals selection skew, per-algorithm call mix, and cluster pool size over time.
-- Emit `[:rpc_load_balancer, :node_selected, :empty]` when the algorithm is invoked with an empty member list. Returns `nil` instead of crashing inside the algorithm (previously `Random.choose_from_nodes/3` raised on empty lists).
+- Emit `[:rpc_load_balancer, :node_selected, :empty]` when the algorithm is invoked with an empty member list. Telemetry fires first, then the algorithm raises whatever it would have raised (e.g. `Enum.EmptyError` from `Random`) — original contract preserved.
 - Add `rpc_load_balancer.node.selected.count`, `rpc_load_balancer.node.selected.empty.count`, and `rpc_load_balancer.node.pool_size` to `RpcLoadBalancer.Metrics.metrics/0`.
 - Widen the duration histogram buckets to cover sub-millisecond cluster RPC: `0.1, 0.5, 1, 2.5, 5, 10, 25, 50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000` ms (was `1, 5, 10, 25, 50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000` — local-cluster calls hit the floor at 1ms so quantiles capped at 5ms in dashboards).
-
-### Behavior change
-- `RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.choose_from_nodes/4` now returns `nil` on an empty `node_list` instead of letting the underlying algorithm raise (e.g. `Enum.EmptyError` from `Random`). Callers that route through `RpcLoadBalancer.select_node/2` never hit this path (`get_members/1` already errors on an empty pool); only direct callers of the dispatch are affected.
 
 ## 0.3.0
 
