@@ -37,7 +37,7 @@ defmodule RpcLoadBalancer.SelectionTelemetryTest do
   end
 
   describe "choose_from_nodes/4 emits :node_selected" do
-    test "Random algorithm emits selected node + algorithm module + load_balancer + members_count" do
+    test "random algorithm emits selected node + algorithm module + load_balancer + members_count" do
       lb_name = :"telemetry_random_#{System.unique_integer([:positive])}"
       {:ok, _pid} = RpcLoadBalancer.start_link(name: lb_name, selection_algorithm: Random)
 
@@ -53,7 +53,7 @@ defmodule RpcLoadBalancer.SelectionTelemetryTest do
       assert meta.node === node()
     end
 
-    test "RoundRobin algorithm emits with algorithm: RoundRobin" do
+    test "round_robin algorithm emits with algorithm metadata pointing to RoundRobin module" do
       lb_name = :"telemetry_rr_#{System.unique_integer([:positive])}"
 
       {:ok, _pid} =
@@ -78,7 +78,7 @@ defmodule RpcLoadBalancer.SelectionTelemetryTest do
   end
 
   describe "choose_from_nodes/4 emits :node_selected, :empty" do
-    test "Random algorithm with empty members list fires :empty event with no :node tag" do
+    test "random algorithm with empty members list fires :empty event with no :node tag" do
       lb_name = :"telemetry_empty_#{System.unique_integer([:positive])}"
       {:ok, _pid} = RpcLoadBalancer.start_link(name: lb_name, selection_algorithm: Random)
 
