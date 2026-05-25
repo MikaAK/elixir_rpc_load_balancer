@@ -154,15 +154,11 @@ defmodule RpcLoadBalancer do
         if SelectionAlgorithm.local?(algorithm) do
           {:ok, apply(module, fun, args)}
         else
-          {select_opts, call_opts} = Keyword.split(opts, [:key, :call_directly?, :load_balancer])
-
-          with {:ok, selected_node} <- select_node(load_balancer_name, select_opts) do
-            with_drainer(load_balancer_name, fn ->
-              result = erpc_call(selected_node, module, fun, args, call_opts)
-              SelectionAlgorithm.release_node(algorithm, load_balancer_name, selected_node)
-              result
+          with_no_route_retry(load_balancer_name, opts, fn ->
+            route_and_run(load_balancer_name, algorithm, opts, fn selected_node ->
+              erpc_call(selected_node, module, fun, args, Keyword.take(opts, [:timeout]))
             end)
-          end
+          end)
         end
       end
     end
@@ -180,18 +176,49 @@ defmodule RpcLoadBalancer do
           spawn(module, fun, args)
           :ok
         else
-          {select_opts, _cast_opts} = Keyword.split(opts, [:key, :call_directly?, :load_balancer])
-
-          with {:ok, selected_node} <- select_node(load_balancer_name, select_opts) do
-            with_drainer(load_balancer_name, fn ->
-              result = erpc_cast(selected_node, module, fun, args)
-              SelectionAlgorithm.release_node(algorithm, load_balancer_name, selected_node)
-              result
+          with_no_route_retry(load_balancer_name, opts, fn ->
+            route_and_run(load_balancer_name, algorithm, opts, fn selected_node ->
+              erpc_cast(selected_node, module, fun, args)
             end)
-          end
+          end)
         end
       end
     end
+  end
+
+  # Selects a member for the load balancer and runs `run_fun.(selected_node)`,
+  # releasing the node afterward. Returns `:retry` when no member is registered
+  # so the surrounding `with_no_route_retry/3` can back off and try again
+  # (cluster boot, rolling restart). Other selection errors pass straight back.
+  defp route_and_run(load_balancer_name, algorithm, opts, run_fun) do
+    case select_node(load_balancer_name, Keyword.take(opts, [:key, :call_directly?, :load_balancer])) do
+      {:error, %ErrorMessage{code: :service_unavailable}} ->
+        :retry
+
+      {:error, _reason} = error ->
+        error
+
+      {:ok, selected_node} ->
+        with_drainer(load_balancer_name, fn ->
+          result = run_fun.(selected_node)
+          SelectionAlgorithm.release_node(algorithm, load_balancer_name, selected_node)
+          result
+        end)
+    end
+  end
+
+  defp with_no_route_retry(load_balancer_name, opts, dispatch_fun) do
+    case Retry.with_retry(opts, dispatch_fun) do
+      :error -> no_members_error(load_balancer_name)
+      result -> result
+    end
+  end
+
+  defp no_members_error(load_balancer_name) do
+    {:error,
+     ErrorMessage.service_unavailable("no members registered", %{
+       load_balancer: load_balancer_name
+     })}
   end
 
   defp erpc_call(node, module, fun, args, opts) do

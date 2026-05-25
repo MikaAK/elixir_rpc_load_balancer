@@ -16,9 +16,9 @@ defmodule RpcLoadBalancer.Retry do
 
   defp retry_loop(fun, retry?, retry_count, sleep) do
     case fun.() do
-      :retry when retry? and retry_count > 0 ->
+      :retry when retry? and (retry_count === :infinity or retry_count > 0) ->
         Process.sleep(sleep)
-        retry_loop(fun, retry?, retry_count - 1, sleep)
+        retry_loop(fun, retry?, decrement_retry_count(retry_count), sleep)
 
       :retry ->
         :error
@@ -27,4 +27,7 @@ defmodule RpcLoadBalancer.Retry do
         result
     end
   end
+
+  defp decrement_retry_count(:infinity), do: :infinity
+  defp decrement_retry_count(retry_count), do: retry_count - 1
 end
