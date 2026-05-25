@@ -72,7 +72,9 @@ defmodule RpcLoadBalancer.Metrics do
     1_000,
     2_500,
     5_000,
-    10_000
+    10_000,
+    30_000,
+    60_000
   ]
 
   @pool_buckets [1, 2, 3, 5, 10, 20, 50, 100, 250]

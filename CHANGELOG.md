@@ -1,3 +1,8 @@
+## 0.3.2
+
+### Features
+- Extend `RpcLoadBalancer.Metrics` duration histogram buckets to `30_000` and `60_000` ms. Previously the top bucket was `10_000` ms — calls exceeding 10s landed only in the `+Inf` bucket so `histogram_quantile/2` lost precision above 10s. Long-running RPCs (heavy reports, large data transfers, or any caller with a `:timeout` opt above the default 10s) now have meaningful p95/p99 measurements up to 60s.
+
 ## 0.3.1
 
 ### Features
