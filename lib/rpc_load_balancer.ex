@@ -27,6 +27,81 @@ defmodule RpcLoadBalancer do
   @telemetry_prefix [:rpc_load_balancer, :rpc]
 
   # -------------------------------------------------------------------
+  # use RpcLoadBalancer — named load balancer definition
+  # -------------------------------------------------------------------
+
+  @doc """
+  Defines a named load balancer module exposing the full `RpcLoadBalancer`
+  interface bound to a fixed configuration.
+
+      defmodule MyApp.LoadBalancer do
+        use RpcLoadBalancer,
+          selection_algorithm: RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.HashRing,
+          node_match_list: ["my_app"]
+      end
+
+  Supervise it directly (`children = [MyApp.LoadBalancer]`) and call the same
+  functions as `RpcLoadBalancer`, with `:load_balancer` set to the using module
+  automatically:
+
+      MyApp.LoadBalancer.call(node(), Mod, :fun, args, key: id)
+      MyApp.LoadBalancer.select_node(key: id)
+      MyApp.LoadBalancer.get_members()
+
+  The `use` options are forwarded to `RpcLoadBalancer.start_link/1` with `:name`
+  set to the using module. `start_link/1` and `child_spec/1` accept a keyword
+  list of runtime overrides.
+  """
+  defmacro __using__(opts) do
+    quote bind_quoted: [opts: opts] do
+      @rpc_load_balancer_opts opts
+
+      def child_spec(overrides \\ []) do
+        %{id: __MODULE__, start: {__MODULE__, :start_link, [overrides]}}
+      end
+
+      def start_link(overrides \\ []) do
+        @rpc_load_balancer_opts
+        |> Keyword.put(:name, __MODULE__)
+        |> Keyword.merge(overrides)
+        |> RpcLoadBalancer.start_link()
+      end
+
+      def get_members, do: RpcLoadBalancer.get_members(__MODULE__)
+
+      def select_node(opts \\ []), do: RpcLoadBalancer.select_node(__MODULE__, opts)
+
+      def call(node, module, fun, args, opts \\ []) do
+        RpcLoadBalancer.call(node, module, fun, args, Keyword.put(opts, :load_balancer, __MODULE__))
+      end
+
+      def cast(node, module, fun, args, opts \\ []) do
+        RpcLoadBalancer.cast(node, module, fun, args, Keyword.put(opts, :load_balancer, __MODULE__))
+      end
+
+      def call_on_random_node(node_filter, module, fun, args, opts \\ []) do
+        RpcLoadBalancer.call_on_random_node(
+          node_filter,
+          module,
+          fun,
+          args,
+          Keyword.put(opts, :load_balancer, __MODULE__)
+        )
+      end
+
+      def cast_on_random_node(node_filter, module, fun, args, opts \\ []) do
+        RpcLoadBalancer.cast_on_random_node(
+          node_filter,
+          module,
+          fun,
+          args,
+          Keyword.put(opts, :load_balancer, __MODULE__)
+        )
+      end
+    end
+  end
+
+  # -------------------------------------------------------------------
   # Supervisor
   # -------------------------------------------------------------------
 

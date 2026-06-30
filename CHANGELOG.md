@@ -1,10 +1,10 @@
-## 0.3.3
+## 0.4.0
 
 ### Features
+- Add `use RpcLoadBalancer` to define a named load balancer module that exposes the full `RpcLoadBalancer` interface (`call/5`, `cast/5`, `call_on_random_node/5`, `cast_on_random_node/5`, `select_node/1`, `get_members/0`) bound to a fixed configuration, plus `child_spec/1` and `start_link/1` so it supervises directly (`children = [MyApp.LoadBalancer]`). Each generated function sets `:load_balancer` to the using module, so callers route by `key:` without repeating the LB name. Mirrors `RpcLoadBalancer`'s return shapes exactly. Modeled on `use Ecto.Repo`.
 - Retry no-route conditions on the load-balancer-routed `RpcLoadBalancer.call/5` and `cast/5` paths (the `load_balancer:` option). When `select_node/2` finds no registered members (`:service_unavailable`), the call now backs off and retries per the `:retry?` / `:retry_count` / `:retry_sleep` options instead of failing immediately — matching the resilience the random-node path already had. Useful for cluster boot and rolling restarts where members register slightly after callers start routing. Non-selection errors (e.g. `:erpc` transport failures) pass through un-retried.
 - Support `retry_count: :infinity` in `RpcLoadBalancer.Retry.with_retry/2`. Previously `:infinity` raised `ArithmeticError` (`:infinity - 1`); it now retries without decrementing until the function stops returning `:retry`.
 
->>>>>>> 91b9489 (feat(metrics): extend duration buckets to 30s + 60s (#6))
 ## 0.3.2
 
 ### Features
