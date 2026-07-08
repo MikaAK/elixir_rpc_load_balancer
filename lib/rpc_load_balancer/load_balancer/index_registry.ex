@@ -36,7 +36,7 @@ defmodule RpcLoadBalancer.LoadBalancer.IndexRegistry do
         index
 
       _ ->
-        ref = :persistent_term.get({__MODULE__, :counter, cache_name})
+        ref = counter_ref!(cache_name)
         index = :atomics.add_get(ref, 1, 1) - 1
         :ok = put(registry_key, nil, index)
         index
@@ -60,5 +60,27 @@ defmodule RpcLoadBalancer.LoadBalancer.IndexRegistry do
       {:ok, value} -> Cache.TermEncoder.decode(value)
       _ -> nil
     end
+  end
+
+  defp counter_ref!(cache_name) do
+    :persistent_term.get({__MODULE__, :counter, cache_name})
+  rescue
+    ArgumentError ->
+      reraise """
+              #{inspect(__MODULE__)}: no index counter is registered for cache #{inspect(cache_name)} on node #{inspect(node())}.
+
+              This counter is only initialized when an `RpcLoadBalancer` load-balancer instance \
+              starts on the node (via `#{inspect(__MODULE__)}.init_counter/1`). Reaching this point \
+              means a call was routed through the drainer (the `load_balancer:` option on \
+              `RpcLoadBalancer.call_on_random_node/5` or `cast_on_random_node/5`) but no such \
+              instance is running here, so the counter was never seeded.
+
+              To fix, either:
+
+                (a) start an `{RpcLoadBalancer, name: ...}` child in this node's supervision tree, or
+                (b) call `call_on_random_node/5` / `cast_on_random_node/5` WITHOUT the \
+                    `:load_balancer` option, which bypasses the drainer entirely.
+              """,
+              __STACKTRACE__
   end
 end
