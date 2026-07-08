@@ -417,10 +417,10 @@ defmodule RpcLoadBalancer do
   defp no_nodes_error(result, _node_filter), do: result
 
   defp filter_nodes(node_filter) do
-    Enum.filter(Node.list(), &(to_string(&1) =~ node_filter))
+    Enum.filter(Node.list(), &RpcLoadBalancer.NodeFilter.matches?(&1, node_filter))
   end
 
   defp current_node_matches_filter?(node_filter) do
-    to_string(node()) =~ node_filter
+    RpcLoadBalancer.NodeFilter.matches?(node(), node_filter)
   end
 end
