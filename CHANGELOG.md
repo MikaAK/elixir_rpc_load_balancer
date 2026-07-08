@@ -1,3 +1,15 @@
+## 0.3.4
+
+### Features
+- Add `use RpcLoadBalancer` to define a named load balancer module exposing the full `RpcLoadBalancer` interface bound to a fixed configuration, with `child_spec/1`/`start_link/1` for direct supervision. (#8)
+- Retry no-route conditions on the load-balancer-routed `call/5` and `cast/5` paths (the `load_balancer:` option), backing off per `:retry?`/`:retry_count`/`:retry_sleep` instead of failing immediately; non-selection errors pass through un-retried. (#8)
+- Support `retry_count: :infinity` in `RpcLoadBalancer.Retry.with_retry/2` (previously raised `ArithmeticError`). (#8)
+- Add configurable, filter-relative node exclusion via `config :rpc_load_balancer, excluded_node_patterns: [...]` (default `[]`). A node whose short name carries an excluded pattern is dropped from any filter that does not itself carry it, while a filter carrying the pattern still reaches it. All node matching routes through `RpcLoadBalancer.NodeFilter.matches?/2,3`. (#10)
+
+### Fixes
+- Raise a clear, actionable error from `IndexRegistry.get_or_register/2` when the cache's index counter was never initialized, naming the missing cache/node instead of an opaque `:persistent_term` `ArgumentError`. (#9)
+- Bypass telemetry on hot reads and use single-pass algorithm selection. (#2)
+
 ## 0.3.3
 
 ### Features
