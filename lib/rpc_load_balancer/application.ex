@@ -10,8 +10,7 @@ defmodule RpcLoadBalancer.Application do
     RpcLoadBalancer.LoadBalancer.AlgorithmCache,
     RpcLoadBalancer.LoadBalancer.CounterCache,
     RpcLoadBalancer.LoadBalancer.DrainerCache,
-    RpcLoadBalancer.LoadBalancer.IndexRegistry,
-    RpcLoadBalancer.LoadBalancer.LoadBalancerOptsCache
+    RpcLoadBalancer.LoadBalancer.IndexRegistry
   ]
 
   # Algorithms whose `caches/0` declarations contribute to the

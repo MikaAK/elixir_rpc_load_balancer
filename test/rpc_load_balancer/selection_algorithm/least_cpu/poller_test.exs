@@ -29,7 +29,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.PollerTest do
     entry =
       poll_until(fn ->
         case NodeCpuCache.get_local_cpu() do
-          {:ok, %{} = map} -> map
+          %{} = map -> map
           _ -> nil
         end
       end)
@@ -41,7 +41,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.PollerTest do
     entry =
       poll_until(fn ->
         case NodeCpuCache.get_local_cpu() do
-          {:ok, %{fetched_at: ts} = map} when ts > prev_fetched_at -> map
+          %{fetched_at: ts} = map when ts > prev_fetched_at -> map
           _ -> nil
         end
       end)
@@ -118,7 +118,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.PollerTest do
     )
 
     Process.sleep(150)
-    assert {:ok, nil} = NodeCpuCache.get_local_cpu()
+    assert NodeCpuCache.get_local_cpu() === nil
   end
 
   test "emits :telemetry span events on every poll" do

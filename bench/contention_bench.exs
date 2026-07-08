@@ -31,7 +31,7 @@ scenarios =
 
 Benchee.run(
   scenarios,
-  parallel: 8,
+  parallel: 32,
   warmup: 1,
   time: 3,
   memory_time: 0,

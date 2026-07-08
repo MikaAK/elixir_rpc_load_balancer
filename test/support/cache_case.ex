@@ -24,8 +24,8 @@ defmodule RpcLoadBalancer.CacheCase do
     RpcLoadBalancer.LoadBalancer.AlgorithmCache,
     RpcLoadBalancer.LoadBalancer.HashRingCache,
     RpcLoadBalancer.LoadBalancer.IndexRegistry,
-    RpcLoadBalancer.LoadBalancer.LoadBalancerOptsCache,
-    RpcLoadBalancer.LoadBalancer.NodeCpuCache
+    RpcLoadBalancer.LoadBalancer.NodeCpuCache,
+    RpcLoadBalancer.LoadBalancer.WeightedRoundRobinCache
   ]
 
   defmacro __using__(_opts) do
