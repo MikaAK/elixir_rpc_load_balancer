@@ -94,28 +94,30 @@ When the `:load_balancer` option is present, the first argument (node) is ignore
 
 | Algorithm | Description | Selection cost (8 nodes) | Scales with cluster size |
 |---|---|---:|---|
-| `CallDirect` | Executes locally via `apply/3`, bypassing `:erpc` — ideal for tests | **0.04 μs** / 23.4 M ips | constant |
-| `Random` | Picks a random node (default) | **0.11 μs** / 8.9 M ips | constant |
-| `RoundRobin` | Cycles through nodes with an atomic counter | **0.81 μs** / 1.24 M ips | constant |
-| `PowerOfTwo` | Picks 2 random nodes, chooses the one with fewer connections | **2.56 μs** / 391 K ips | sub-linear (2 ETS reads) |
-| `WeightedRoundRobin` | Round robin with configurable per-node weights | **2.78 μs** / 359 K ips | sub-linear (rebuilds expanded list) |
-| `LeastConnections` | Selects the node with fewest active connections | **5.87 μs** / 170 K ips | **linear** (reads every node's counter) |
-| `LeastCpu` | Selects the node with the lowest cached CPU utilization | **17.4 μs** / 57 K ips | **linear** (reads every node's CPU entry) |
-| `HashRing` | Consistent hash-based routing via a `:key` option | **28.7 μs** / 35 K ips | constant (cached `libring` lookup) |
+| `CallDirect` | Executes locally via `apply/3`, bypassing `:erpc` — ideal for tests | **0.04 μs** / 23.2 M ips | constant |
+| `Random` | Picks a random node (default) | **0.11 μs** / 8.7 M ips | constant |
+| `RoundRobin` | Cycles through nodes with an atomic counter | **0.77 μs** / 1.29 M ips | constant |
+| `WeightedRoundRobin` | Round robin with configurable per-node weights | **0.88 μs** / 1.14 M ips | constant (cached expanded list) |
+| `LeastConnections` | Selects the node with fewest active connections | **1.18 μs** / 840 K ips | linear (`:counters` read per node) |
+| `PowerOfTwo` | Picks 2 random nodes, chooses the one with fewer connections | **1.32 μs** / 760 K ips | sub-linear (2 `:counters` reads) |
+| `HashRing` | Consistent hash-based routing via a `:key` option | **2.02 μs** / 490 K ips | near-constant (cached ring) |
+| `LeastCpu` | Selects the node with the lowest cached CPU utilization | **12.0 μs** / 83 K ips | linear (CPU entry read per node) |
 
 Numbers from `mix run bench/select_node_bench.exs` on Apple M1 Max,
 Elixir 1.19.5 / OTP 28.3.3, 8-node synthetic cluster, single process.
-Full per-cluster-size numbers, parallel-contention results, and
-identified bottlenecks are in [`bench/README.md`](bench/README.md).
+Full per-cluster-size numbers, parallel-contention results (32
+schedulers), and the optimization writeup are in
+[`bench/README.md`](bench/README.md).
 
-> **Picking an algorithm.** Use `Random` or `RoundRobin` unless you
-> have a reason not to — they're the cheapest and distribute load
-> uniformly. Reach for `PowerOfTwo` over `LeastConnections` once the
-> cluster is large enough that linear scanning matters (~8+ nodes);
-> it gives near-identical distribution at a fraction of the cost.
-> `HashRing` is the most expensive single-process choice and the
-> worst under parallel read contention — only use it when you
-> actually need key affinity.
+> **Picking an algorithm.** `Random`, `RoundRobin`, and `HashRing`
+> are all sub-microsecond and constant-time regardless of cluster
+> size — pick the one whose distribution semantics match your
+> workload. `PowerOfTwo` is a good fit once the cluster grows past
+> ~8 nodes and you want connection-aware balancing without paying
+> for an O(N) scan; it delivers near-identical distribution to
+> `LeastConnections` at a fraction of the cost. `LeastCpu` is the
+> most expensive single-process option but routes around hot
+> backends — use it when CPU pressure is the dominant load signal.
 
 ## Configuration
 

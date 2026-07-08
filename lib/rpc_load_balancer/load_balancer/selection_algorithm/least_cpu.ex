@@ -44,7 +44,6 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu do
 
   @behaviour RpcLoadBalancer.LoadBalancer.SelectionAlgorithm
 
-  alias RpcLoadBalancer.LoadBalancer.LoadBalancerOptsCache
   alias RpcLoadBalancer.LoadBalancer.NodeCpuCache
   alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.Poller
 
@@ -89,7 +88,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu do
 
   @impl true
   def init(load_balancer_name, opts) do
-    LoadBalancerOptsCache.put({load_balancer_name, :cpu_opts}, nil, %{
+    :persistent_term.put(opts_pt_key(load_balancer_name), %{
       cpu_cache_ttl: Keyword.get(opts, :cpu_cache_ttl, @default_cpu_cache_ttl),
       cpu_threshold: Keyword.get(opts, :cpu_threshold, @default_cpu_threshold)
     })
@@ -97,11 +96,13 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu do
     :ok
   end
 
+  defp opts_pt_key(load_balancer_name), do: {__MODULE__, load_balancer_name, :opts}
+
   @impl true
   def choose_from_nodes(load_balancer_name, node_list, _opts \\ []) do
     %{cpu_cache_ttl: ttl, cpu_threshold: threshold} = load_opts(load_balancer_name)
-    node_cpus = measure_nodes(node_list, ttl)
-    pick_from_threshold_band(node_cpus, threshold)
+    now = System.monotonic_time(:millisecond)
+    pick_from_threshold_band(node_list, now, ttl, threshold)
   end
 
   # `on_node_change` is intentionally not implemented: CPU entries are
@@ -110,34 +111,36 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu do
   # LBs may still reference the same node. Stale entries naturally age
   # out via `cpu_cache_ttl`.
 
-  defp measure_nodes(node_list, ttl) do
-    now = System.monotonic_time(:millisecond)
+  defp read_node_cpu(target_node, now, ttl) do
+    case NodeCpuCache.get_cpu(target_node) do
+      %{cpu: cpu, fetched_at: fetched_at} when now - fetched_at <= ttl -> cpu
+      _ -> @default_cpu
+    end
+  end
 
+  defp pick_from_threshold_band([single_node], _now, _ttl, _threshold), do: single_node
+
+  defp pick_from_threshold_band(node_list, now, ttl, threshold) do
+    node_cpus = measure_nodes(node_list, now, ttl)
+    {_min_node, min_cpu} = Enum.min_by(node_cpus, &elem(&1, 1))
+    upper = min_cpu + threshold
+
+    node_cpus
+    |> Enum.filter(fn {_node, cpu} -> cpu <= upper end)
+    |> Enum.random()
+    |> elem(0)
+  end
+
+  defp measure_nodes(node_list, now, ttl) do
     Enum.map(node_list, fn target_node ->
       {target_node, read_node_cpu(target_node, now, ttl)}
     end)
   end
 
-  defp read_node_cpu(target_node, now, ttl) do
-    case NodeCpuCache.get_cpu(target_node) do
-      {:ok, %{cpu: cpu, fetched_at: fetched_at}} when now - fetched_at <= ttl -> cpu
-      _ -> @default_cpu
-    end
-  end
-
-  defp pick_from_threshold_band(node_cpus, threshold) do
-    {_min_node, min_cpu} = Enum.min_by(node_cpus, &elem(&1, 1))
-
-    node_cpus
-    |> Enum.filter(fn {_node, cpu} -> cpu <= min_cpu + threshold end)
-    |> Enum.random()
-    |> elem(0)
-  end
-
   defp load_opts(load_balancer_name) do
-    case LoadBalancerOptsCache.get({load_balancer_name, :cpu_opts}) do
-      {:ok, %{} = opts} -> opts
-      _ -> %{cpu_cache_ttl: @default_cpu_cache_ttl, cpu_threshold: @default_cpu_threshold}
-    end
+    :persistent_term.get(opts_pt_key(load_balancer_name), %{
+      cpu_cache_ttl: @default_cpu_cache_ttl,
+      cpu_threshold: @default_cpu_threshold
+    })
   end
 end

@@ -42,4 +42,23 @@ defmodule RpcLoadBalancer.LoadBalancer.IndexRegistry do
         index
     end
   end
+
+  @doc """
+  Read the index for a key without telemetry overhead.
+
+  Goes directly to the configured cache adapter, skipping the
+  `:telemetry.span/3`-wrapped `Cache.get/1`. Returns `nil` when the
+  key has never been registered.
+
+  Companion to `get_or_register/2` — use this when callers must not
+  allocate a new index on miss.
+  """
+  @spec get_index(atom(), term()) :: non_neg_integer() | nil
+  def get_index(cache_name, key) do
+    case cache_adapter().get(@cache_name, {cache_name, key}) do
+      {:ok, nil} -> nil
+      {:ok, value} -> Cache.TermEncoder.decode(value)
+      _ -> nil
+    end
+  end
 end

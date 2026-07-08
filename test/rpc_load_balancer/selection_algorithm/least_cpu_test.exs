@@ -6,7 +6,6 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
   alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm
   alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu
   alias RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpu.Poller
-  alias RpcLoadBalancer.LoadBalancer.LoadBalancerOptsCache
 
   defp start_lb!(name, opts \\ []) do
     default_opts = [
@@ -37,13 +36,13 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
   defp await_algorithm_init!(name) do
     opts =
       poll_until(fn ->
-        case LoadBalancerOptsCache.get({name, :cpu_opts}) do
-          {:ok, %{} = opts} -> opts
+        case :persistent_term.get({LeastCpu, name, :opts}, nil) do
+          %{} = opts -> opts
           _ -> nil
         end
       end)
 
-    opts || flunk("LeastCpu.init/2 did not populate LoadBalancerOptsCache for #{inspect(name)}")
+    opts || flunk("LeastCpu.init/2 did not populate :persistent_term for #{inspect(name)}")
   end
 
   defp seed_cpu!(metrics) do
@@ -102,9 +101,9 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
     :ok = SelectionAlgorithm.on_node_change(LeastCpu, name, {:left, [:node_a]})
     :ok = SelectionAlgorithm.on_node_change(LeastCpu, name, {:joined, [:node_x]})
 
-    assert {:ok, %{cpu: 30.0}} = NodeCpuCache.get_cpu(:node_a)
-    assert {:ok, %{cpu: 40.0}} = NodeCpuCache.get_cpu(:node_b)
-    assert {:ok, nil} = NodeCpuCache.get_cpu(:node_x)
+    assert %{cpu: 30.0} = NodeCpuCache.get_cpu(:node_a)
+    assert %{cpu: 40.0} = NodeCpuCache.get_cpu(:node_b)
+    assert NodeCpuCache.get_cpu(:node_x) === nil
   end
 
   test "caches/0 declares NodeCpuCache so the application boots it once" do
@@ -161,15 +160,15 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
 
     assert LeastCpu.choose_from_nodes(name, nodes) === :node_b
 
-    assert {:ok, ^stale_entry} = NodeCpuCache.get_cpu(:node_a)
-    assert {:ok, ^fresh_entry} = NodeCpuCache.get_cpu(:node_b)
+    assert NodeCpuCache.get_cpu(:node_a) === stale_entry
+    assert NodeCpuCache.get_cpu(:node_b) === fresh_entry
   end
 
-  test "algorithm_opts flow through init/2 into LoadBalancerOptsCache" do
+  test "algorithm_opts flow through init/2 into :persistent_term" do
     name = start_lb!(:lcpu_opts_flow, cpu_threshold: 7.5, cpu_cache_ttl: 20_000)
 
-    assert {:ok, %{cpu_threshold: 7.5, cpu_cache_ttl: 20_000}} =
-             LoadBalancerOptsCache.get({name, :cpu_opts})
+    assert %{cpu_threshold: 7.5, cpu_cache_ttl: 20_000} =
+             :persistent_term.get({LeastCpu, name, :opts})
   end
 
   test "poller is registered before the LoadBalancer GenServer finishes booting" do
@@ -189,7 +188,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
     entry =
       poll_until(fn ->
         case NodeCpuCache.get_cpu(node()) do
-          {:ok, %{cpu: 17.0} = map} -> map
+          %{cpu: 17.0} = map -> map
           _ -> nil
         end
       end)
@@ -204,7 +203,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastCpuTest do
 
     cpu = poll_until(fn ->
       case NodeCpuCache.get_cpu(node()) do
-        {:ok, %{cpu: cpu}} -> cpu
+        %{cpu: cpu} -> cpu
         _ -> nil
       end
     end)
