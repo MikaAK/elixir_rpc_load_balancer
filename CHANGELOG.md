@@ -10,13 +10,6 @@
 - Raise a clear, actionable error from `IndexRegistry.get_or_register/2` when the cache's index counter was never initialized, naming the missing cache/node instead of an opaque `:persistent_term` `ArgumentError`. (#9)
 - Bypass telemetry on hot reads and use single-pass algorithm selection. (#2)
 
-## 0.3.3
-
-### Features
-- Retry no-route conditions on the load-balancer-routed `RpcLoadBalancer.call/5` and `cast/5` paths (the `load_balancer:` option). When `select_node/2` finds no registered members (`:service_unavailable`), the call now backs off and retries per the `:retry?` / `:retry_count` / `:retry_sleep` options instead of failing immediately — matching the resilience the random-node path already had. Useful for cluster boot and rolling restarts where members register slightly after callers start routing. Non-selection errors (e.g. `:erpc` transport failures) pass through un-retried.
-- Support `retry_count: :infinity` in `RpcLoadBalancer.Retry.with_retry/2`. Previously `:infinity` raised `ArithmeticError` (`:infinity - 1`); it now retries without decrementing until the function stops returning `:retry`.
-
->>>>>>> 91b9489 (feat(metrics): extend duration buckets to 30s + 60s (#6))
 ## 0.3.2
 
 ### Features
