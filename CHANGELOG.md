@@ -1,4 +1,4 @@
-## 0.5.0
+## 0.4.2
 
 ### Features
 - Add configurable, filter-relative node exclusion via `config :rpc_load_balancer, excluded_node_patterns: [...]` (default `[]`, no behavior change). A node whose short name carries an excluded pattern is dropped from any filter that does not itself carry that pattern, while a filter that carries the pattern still reaches it. All filter-based routing (`call_on_random_node/5`, `cast_on_random_node/5`), the current-node local-apply short-circuit, and named-load-balancer `node_match_list` membership now route through the shared `RpcLoadBalancer.NodeFilter.matches?/2,3` predicate. Use case: keep QA nodes named `<type>_qa@host` out of the prod `<type>` routing set and out of prod ownership elections, while a `<type>_qa` filter can still target them. Previously all matching used bare substring (`to_string(node) =~ filter`), so `<type>_qa@host` was indistinguishable from `<type>@host` for a `<type>` filter.
