@@ -26,4 +26,9 @@ defmodule RpcLoadBalancer.Config do
   def retry_count do
     Application.get_env(@app, :retry_count, 5)
   end
+
+  @spec excluded_node_patterns() :: [String.t()]
+  def excluded_node_patterns do
+    Application.get_env(@app, :excluded_node_patterns, [])
+  end
 end

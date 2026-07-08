@@ -105,7 +105,7 @@ defmodule RpcLoadBalancer.LoadBalancer do
   defp included_node?(:all, _node_name), do: true
 
   defp included_node?(node_list, node_name) do
-    Enum.any?(node_list, &(to_string(node_name) =~ &1))
+    Enum.any?(node_list, &RpcLoadBalancer.NodeFilter.matches?(node_name, &1))
   end
 
   defp monitor_pg_group(load_balancer_name) do
