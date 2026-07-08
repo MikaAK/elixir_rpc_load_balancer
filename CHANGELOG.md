@@ -1,3 +1,8 @@
+## 0.4.1
+
+### Fixes
+- Raise a clear, actionable error from `RpcLoadBalancer.LoadBalancer.IndexRegistry.get_or_register/2` when the cache's index counter was never initialized. Previously, routing a call through the drainer (the `load_balancer:` option on `call_on_random_node/5` or `cast_on_random_node/5`) on a node where no `RpcLoadBalancer` load-balancer instance is running raised an opaque `ArgumentError` from `:persistent_term.get/1` (`no persistent term stored with this key`), giving no hint about the cause. The error now names the missing cache and node and points to the two fixes: start an `{RpcLoadBalancer, name: ...}` child on the node, or drop the `:load_balancer` option.
+
 ## 0.4.0
 
 ### Features
