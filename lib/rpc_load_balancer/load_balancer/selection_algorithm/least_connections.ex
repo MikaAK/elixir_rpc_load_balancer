@@ -2,10 +2,11 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.LeastConnections do
   @moduledoc """
   Least connections node selection algorithm.
 
-  Tracks active connection counts per node using ETS counters and always
-  selects the node with the fewest active connections. When a call completes,
-  `release_node/2` must be called to decrement the counter. The convenience
-  API in `RpcLoadBalancer.LoadBalancer.call/5` handles this automatically.
+  Tracks active connection counts per node using lock-free `:counters` and
+  always selects the node with the fewest active connections. When a call
+  completes, `release_node/2` must be called to decrement the counter.
+  `RpcLoadBalancer.call/5` and `cast/5` with the `:load_balancer` option
+  handle this automatically.
 
   Hot-path implementation uses `CounterCache.get_node_count/2` (which
   bypasses the telemetry wrapper) and a single-pass `Enum.reduce/3` that

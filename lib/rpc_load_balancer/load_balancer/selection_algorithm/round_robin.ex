@@ -2,9 +2,9 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.RoundRobin do
   @moduledoc """
   Round robin node selection algorithm.
 
-  Uses an atomic ETS counter to cycle through nodes. The counter is
-  incremented and read in a single `update_counter` call to
-  avoid race conditions under concurrent access.
+  Uses a shared atomic `:counters` slot (via `CounterCache`) to cycle
+  through nodes. Selection is one atomic increment plus an `Enum.at/2`,
+  constant in cluster size. The counter resets after 10,000,000 picks.
   """
 
   @behaviour RpcLoadBalancer.LoadBalancer.SelectionAlgorithm

@@ -83,20 +83,40 @@ defmodule RpcLoadBalancer.MixProject do
       extras: [
         "docs/overview.md",
         "docs/tutorials/getting-started.md",
+        "docs/how-to/named-load-balancer-module.md",
         "docs/how-to/custom-selection-algorithm.md",
         "docs/how-to/hash-based-routing.md",
         "docs/how-to/node-filtering.md",
         "docs/how-to/connection-tracking.md",
         "docs/how-to/weighted-round-robin.md",
+        "docs/how-to/least-cpu.md",
+        "docs/how-to/retry-behaviour.md",
+        "docs/how-to/telemetry-and-metrics.md",
         "docs/how-to/testing-with-call-direct.md",
         "docs/reference/load_balancer.md",
-        "docs/explanation/architecture.md"
+        "docs/explanation/architecture.md",
+        "CHANGELOG.md"
       ],
       groups_for_extras: [
         Tutorials: ~r/docs\/tutorials\/.*/,
         "How-To Guides": ~r/docs\/how-to\/.*/,
         Reference: ~r/docs\/reference\/.*/,
         Explanation: ~r/docs\/explanation\/.*/
+      ],
+      groups_for_modules: [
+        "Selection Algorithms": ~r/RpcLoadBalancer\.LoadBalancer\.SelectionAlgorithm\..*/,
+        Internals: [
+          RpcLoadBalancer.LoadBalancer,
+          RpcLoadBalancer.LoadBalancer.Drainer,
+          RpcLoadBalancer.LoadBalancer.Pg,
+          RpcLoadBalancer.LoadBalancer.AlgorithmCache,
+          RpcLoadBalancer.LoadBalancer.IndexRegistry,
+          RpcLoadBalancer.LoadBalancer.CounterCache,
+          RpcLoadBalancer.LoadBalancer.DrainerCache,
+          RpcLoadBalancer.LoadBalancer.HashRingCache,
+          RpcLoadBalancer.LoadBalancer.WeightedRoundRobinCache,
+          RpcLoadBalancer.LoadBalancer.NodeCpuCache
+        ]
       ]
     ]
   end

@@ -1,3 +1,10 @@
+## Unreleased
+
+### Docs
+- Overhaul all guides for 0.3.x: `use RpcLoadBalancer` named modules, `LeastCpu`, telemetry/metrics, no-route retry, `excluded_node_patterns`, and the current cache/storage layout. New how-tos: named load balancer module, least CPU, retry behaviour, telemetry and metrics. Reference and architecture docs rewritten to match the code; stale moduledocs (`select_nodes/3`, ETS counters, `RpcLoadBalancer.LoadBalancer.start_link`) corrected.
+- Rewrite `AGENTS.md` for this repository and fill in the `elixir_skills` consumer skill.
+- Remove `docs/superpowers/` design/plan scratch files (they were shipped in the Hex package via `files: ~w(... docs)`).
+
 ## 0.3.4
 
 ### Features

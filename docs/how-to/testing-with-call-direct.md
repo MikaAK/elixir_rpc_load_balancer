@@ -20,12 +20,12 @@ With `CallDirect` active:
 
 - `call/5` with `load_balancer: :name` executes `apply(module, fun, args)` and returns `{:ok, result}`
 - `cast/5` with `load_balancer: :name` executes `spawn(module, fun, args)` and returns `:ok`
-- No `:erpc` calls are made
-- No cluster nodes are required
+- No `:erpc` calls are made and no cluster nodes are required
+- Node selection is skipped entirely (no `:pg` lookup, no `[:rpc_load_balancer, :node_selected]` event); the `[:rpc_load_balancer, :rpc, ...]` span still fires
 
 ## Use it in ExUnit setup
 
-A typical test module that depends on a load balancer:
+A typical test module that depends on a load balancer. `start_link/1` returns only after the balancer has joined its `:pg` group, so no sleep is needed:
 
 ```elixir
 defmodule MyApp.WorkerTest do
@@ -36,13 +36,9 @@ defmodule MyApp.WorkerTest do
   setup do
     lb_name = :"test_lb_#{System.unique_integer([:positive])}"
 
-    {:ok, _pid} =
-      RpcLoadBalancer.start_link(
-        name: lb_name,
-        selection_algorithm: SelectionAlgorithm.CallDirect
-      )
-
-    Process.sleep(50)
+    start_supervised!(
+      {RpcLoadBalancer, name: lb_name, selection_algorithm: SelectionAlgorithm.CallDirect}
+    )
 
     %{lb_name: lb_name}
   end
@@ -69,9 +65,42 @@ defmodule MyApp.WorkerTest do
 end
 ```
 
+## Named modules in tests
+
+A module defined with `use RpcLoadBalancer` is registered under its own name, so only one instance can run per node. Start it with `start_supervised!/1` and it is torn down between tests:
+
+```elixir
+defmodule MyApp.LoadBalancerTest do
+  use ExUnit.Case, async: true
+
+  setup do
+    start_supervised!(MyApp.LoadBalancer)
+    :ok
+  end
+
+  test "routes through the module" do
+    assert {:ok, :called} === MyApp.LoadBalancer.call(node(), Kernel, :apply, [fn -> :called end, []])
+  end
+end
+```
+
+If the module is already started by your application (it usually is), skip the `setup` and call it directly.
+
 ## Application-level configuration
 
-If your application starts a load balancer in its supervision tree, you can switch the algorithm based on the compile-time environment:
+If your application starts a load balancer in its supervision tree, switch the algorithm based on the compile-time environment:
+
+```elixir
+defmodule MyApp.LoadBalancer do
+  @algorithm if Mix.env() === :test,
+               do: RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.CallDirect,
+               else: RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.RoundRobin
+
+  use RpcLoadBalancer, selection_algorithm: @algorithm
+end
+```
+
+Or with the tuple form:
 
 ```elixir
 defmodule MyApp.Application do
@@ -96,9 +125,21 @@ end
 
 This uses a module attribute evaluated at compile time, which avoids calling `Mix.env()` at runtime (where it doesn't exist in releases).
 
-## Why CallDirect should always be used in tests
+## Alternative: the `call_directly?` config flag
 
-- **No cluster required** — tests run on a single node, so `:erpc` calls to remote nodes will fail with `{:error, %ErrorMessage{code: :service_unavailable}}`
+If you would rather keep the production algorithm in place and short-circuit at the call site, set the application flag in `config/test.exs`:
+
+```elixir
+config :rpc_load_balancer, call_directly?: true
+```
+
+With `call_directly?: true`, `call/5`, `cast/5`, `call_on_random_node/5`, and `cast_on_random_node/5` all execute locally regardless of which algorithm the balancer runs. It can also be passed per call (`call_directly?: true`) to override the config for a single invocation.
+
+The difference from `CallDirect`: the flag is global (every balancer in the VM), while `CallDirect` is per balancer. Prefer `CallDirect` when you want one balancer local and another exercising real selection.
+
+## Why CallDirect should be used in tests
+
+- **No cluster required** — tests run on a single node, so `:erpc` calls to remote nodes would fail with `{:error, %ErrorMessage{code: :service_unavailable}}`
 - **Deterministic** — `apply/3` runs synchronously in the calling process, making assertions straightforward
-- **Fast** — skips `:erpc` serialization and the `:pg` member lookup entirely
+- **Fast** — skips `:erpc` serialization and the `:pg` member lookup entirely (~0.04 μs per call)
 - **Isolated** — each test can start its own load balancer with a unique name without interfering with other tests

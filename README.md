@@ -24,13 +24,15 @@ This gives you:
 
 - **RPC wrappers** — `call/5` and `cast/5` around `:erpc` with `ErrorMessage` error tuples
 - **Distributed load balancer** — automatic node discovery and registration via `:pg`
-- **Seven selection algorithms** — Random, Round Robin, Least Connections, Power of Two, Hash Ring, Weighted Round Robin, Call Direct
+- **Eight selection algorithms** — Random, Round Robin, Weighted Round Robin, Least Connections, Power of Two, Hash Ring, Least CPU, Call Direct
+- **Named load balancer modules** — `use RpcLoadBalancer` binds a configuration to a module with its own `call/5`, `cast/5`, `select_node/1`, and `child_spec/1`
 - **Custom algorithms** — implement the `SelectionAlgorithm` behaviour to add your own
-- **Node filtering** — restrict which nodes join a balancer with string or regex patterns
-- **Connection tracking** — atomic counters for connection-aware algorithms
+- **Node filtering** — restrict which nodes join a balancer with string or regex patterns, plus filter-relative exclusions (`excluded_node_patterns`) for keeping e.g. QA nodes out of production routing
+- **Connection tracking** — lock-free `:counters` for connection-aware algorithms
 - **Random-node helpers** — `call_on_random_node/5` and `cast_on_random_node/5` for name-based node filtering with built-in retry
+- **Retry on no route** — load-balanced calls and random-node helpers back off and retry when the pool is empty (cluster boot, rolling restarts), with `retry_count: :infinity` supported
 - **Graceful draining** — in-flight call tracking and connection draining on shutdown
-- **Configurable retry** — automatic retry with configurable count and sleep when no nodes are available
+- **Telemetry & metrics** — `:telemetry` spans on every call/cast, node-selection events, and ready-made `Telemetry.Metrics` definitions in `RpcLoadBalancer.Metrics`
 
 ## Installation
 
@@ -39,10 +41,12 @@ Add `rpc_load_balancer` to your dependencies:
 ```elixir
 def deps do
   [
-    {:rpc_load_balancer, "~> 0.1.0"}
+    {:rpc_load_balancer, "~> 0.3"}
   ]
 end
 ```
+
+Requires Elixir 1.13+ and OTP 23+ (`:pg`). `LeastCpu` additionally uses `:os_mon`, which is declared as an extra application for you.
 
 ## Quick Start
 
@@ -77,6 +81,23 @@ Start a load balancer, then route calls through it with the `:load_balancer` opt
 ```
 
 When the `:load_balancer` option is present, the first argument (node) is ignored — the balancer selects the target node for you.
+
+### Named load balancer module
+
+For a fixed configuration, define a module with `use RpcLoadBalancer`. It gets `child_spec/1`, `start_link/1`, and the full call API bound to itself:
+
+```elixir
+defmodule MyApp.LoadBalancer do
+  use RpcLoadBalancer,
+    selection_algorithm: RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.HashRing,
+    node_match_list: ["my_app"]
+end
+
+children = [MyApp.Repo, MyAppWeb.Endpoint, MyApp.LoadBalancer]
+
+{:ok, result} = MyApp.LoadBalancer.call(node(), MyModule, :my_fun, [arg], key: user_id)
+{:ok, node} = MyApp.LoadBalancer.select_node(key: user_id)
+```
 
 > **Supervision tree ordering:** The load balancer should be the **last child** in your supervision tree. OTP shuts down children in reverse order, so placing it last means it shuts down first during deployment — the node deregisters from the `:pg` group and drains in-flight calls before your application logic stops.
 >
@@ -127,14 +148,32 @@ All values are optional and can be set via application config:
 config :rpc_load_balancer,
   call_directly?: false,
   retry?: true,
-  retry_count: 5
+  retry_count: 5,
+  excluded_node_patterns: []
 ```
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `:call_directly?` | `false` | Execute all load-balanced calls locally via `apply/3` |
 | `:retry?` | `true` | Enable automatic retry when no nodes are available |
-| `:retry_count` | `5` | Maximum number of retries |
+| `:retry_count` | `5` | Maximum number of retries (`:infinity` allowed per call) |
+| `:excluded_node_patterns` | `[]` | Node-name substrings (e.g. `["_qa"]`) dropped from any filter that does not itself contain them |
+
+Per-call overrides for `:call_directly?`, `:retry?`, `:retry_count`, and `:retry_sleep` (default 5s) are accepted on `call/5`, `cast/5`, `call_on_random_node/5`, and `cast_on_random_node/5`.
+
+## Telemetry
+
+Every `call/5` and `cast/5` is wrapped in a `:telemetry.span/3` under `[:rpc_load_balancer, :rpc]`, and every selection emits `[:rpc_load_balancer, :node_selected]`. `RpcLoadBalancer.Metrics.metrics/0` returns ready-to-register `Telemetry.Metrics` definitions:
+
+```elixir
+children = [
+  {PrometheusTelemetry,
+   exporter: [enabled?: true],
+   metrics: [RpcLoadBalancer.Metrics.metrics()]}
+]
+```
+
+See the [Telemetry and Metrics](docs/how-to/telemetry-and-metrics.md) guide for the full event and series list.
 
 ## Testing
 
@@ -159,6 +198,8 @@ To switch automatically based on environment, use a compile-time module attribut
                        else: RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.RoundRobin
 ```
 
+Alternatively set `config :rpc_load_balancer, call_directly?: true` in `config/test.exs` to short-circuit every load-balanced call regardless of algorithm.
+
 See the [Testing with CallDirect](docs/how-to/testing-with-call-direct.md) how-to guide for full examples.
 
 ## Documentation
@@ -166,8 +207,8 @@ See the [Testing with CallDirect](docs/how-to/testing-with-call-direct.md) how-t
 This project's documentation follows the [Diátaxis](https://diataxis.fr/) framework:
 
 - **[Tutorial: Getting Started](docs/tutorials/getting-started.md)** — learn the library by building a load-balanced RPC setup step by step
-- **[How-To Guides](docs/how-to/)** — solve specific problems like custom algorithms, node filtering, and hash-based routing
-- **[Reference](docs/reference/)** — complete API documentation for every module
+- **[How-To Guides](docs/how-to/)** — named load balancer modules, custom algorithms, hash-based routing, node filtering, connection tracking, weighted round robin, least CPU, retry behaviour, telemetry, and testing
+- **[Reference](docs/reference/load_balancer.md)** — complete API documentation for every module
 - **[Explanation](docs/explanation/architecture.md)** — understand the design decisions and internal architecture
 
 ## License

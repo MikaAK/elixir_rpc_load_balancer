@@ -22,16 +22,25 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.HashRing do
 
   ## Usage
 
-      RpcLoadBalancer.LoadBalancer.start_link(
+      RpcLoadBalancer.start_link(
         name: :my_balancer,
         selection_algorithm: RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.HashRing,
         algorithm_opts: [weight: 200]
       )
 
-      RpcLoadBalancer.LoadBalancer.select_node(:my_balancer, key: "user:123")
+      RpcLoadBalancer.select_node(:my_balancer, key: "user:123")
 
-      {:ok, [primary, replica]} =
-        RpcLoadBalancer.LoadBalancer.select_nodes(:my_balancer, 2, key: "user:123")
+      # Replica selection goes through the dispatch layer:
+      {:ok, members} = RpcLoadBalancer.get_members(:my_balancer)
+
+      [primary, replica] =
+        RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.choose_nodes(
+          RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.HashRing,
+          :my_balancer,
+          members,
+          2,
+          key: "user:123"
+        )
 
   ## Options
 

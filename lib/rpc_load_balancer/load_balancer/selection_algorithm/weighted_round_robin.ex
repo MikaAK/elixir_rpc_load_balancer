@@ -21,7 +21,7 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.WeightedRoundRobin do
 
   ## Usage
 
-      RpcLoadBalancer.LoadBalancer.start_link(
+      RpcLoadBalancer.start_link(
         name: :my_balancer,
         selection_algorithm: RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.WeightedRoundRobin,
         algorithm_opts: [weights: %{:"node1@host" => 3, :"node2@host" => 1}]

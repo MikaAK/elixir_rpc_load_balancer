@@ -2,12 +2,19 @@ defmodule RpcLoadBalancer.Config do
   @moduledoc """
   Configuration defaults for `RpcLoadBalancer`.
 
-  All values can be overridden via `Application.put_env/3`:
+  All values are read from the `:rpc_load_balancer` application env:
 
       config :rpc_load_balancer,
         call_directly?: false,
         retry?: true,
-        retry_count: 5
+        retry_count: 5,
+        excluded_node_patterns: []
+
+    * `:call_directly?` — run load-balanced and random-node calls locally via
+      `apply/3` / `spawn/3` (default `false`)
+    * `:retry?` — retry when no node is available (default `true`)
+    * `:retry_count` — retries after the first attempt (default `5`)
+    * `:excluded_node_patterns` — see `RpcLoadBalancer.NodeFilter` (default `[]`)
   """
 
   @app :rpc_load_balancer

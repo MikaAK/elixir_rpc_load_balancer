@@ -2,9 +2,9 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.CallDirect do
   @moduledoc """
   Selection algorithm that executes calls directly on the local node.
 
-  When this algorithm is active, `LoadBalancer.call/5` uses `apply/3`
-  and `LoadBalancer.cast/5` uses `spawn/3` instead of going through
-  `:erpc`. Useful for development, testing, or single-node deployments
+  When this algorithm is active, `RpcLoadBalancer.call/5` uses `apply/3`
+  and `RpcLoadBalancer.cast/5` uses `spawn/3` instead of going through
+  `:erpc`. Node selection is skipped entirely. Useful for development, testing, or single-node deployments
   where RPC overhead is unnecessary.
   """
 

@@ -2,17 +2,33 @@ defmodule RpcLoadBalancer do
   @moduledoc """
   Distributed RPC load balancer built on `:pg`.
 
-  Acts as a per-instance Supervisor that starts the caches and GenServer
-  needed for a single load balancer. Also provides the public API for
-  node selection, RPC calls/casts, and low-level `:erpc` wrappers.
+  Acts as a per-instance Supervisor that starts the selection algorithm's
+  children and the `RpcLoadBalancer.LoadBalancer` GenServer for a single
+  load balancer. Also provides the public API for node selection, RPC
+  calls/casts, random-node helpers, and low-level `:erpc` wrappers.
+
+  Shared caches are owned by the application supervisor, not by individual
+  load balancers.
 
   ## Starting a load balancer
 
       RpcLoadBalancer.start_link(
         name: :my_lb,
-        selection_algorithm: RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.RoundRobin,
-        algorithm_opts: [weights: %{node() => 1}]
+        selection_algorithm: RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.WeightedRoundRobin,
+        algorithm_opts: [weights: %{:"worker1@host" => 3, :"worker2@host" => 1}]
       )
+
+  Or define a named module with `use RpcLoadBalancer` — see `__using__/1`.
+
+  ## Options
+
+    * `:name` (required) — balancer name; also the `:pg` group name
+    * `:selection_algorithm` — module implementing
+      `RpcLoadBalancer.LoadBalancer.SelectionAlgorithm` (default: `Random`)
+    * `:algorithm_opts` — forwarded to the algorithm's `init/2` and `child_specs/2`
+    * `:node_match_list` — `:all` or a list of strings/regexes; controls whether
+      this node registers as a target (default: `:all`)
+    * `:drain_timeout` — ms to wait for in-flight calls on shutdown (default: `15_000`)
   """
 
   use Supervisor
