@@ -96,11 +96,40 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.HashRing do
     :ok
   end
 
+  # The cached ring is only authoritative while it still describes `node_list`.
+  # `on_node_change/2` invalidation is asynchronous — it arrives as a `:pg`
+  # monitor message after the group table has already changed — so a caller can
+  # read fresh membership and a stale ring in between, and a dropped or
+  # out-of-order message leaves the stale ring in place indefinitely. Comparing
+  # the ring's own node set against the list we were handed makes membership,
+  # not message delivery, the source of truth.
+  #
+  # Observed before this guard existed: an autoscaling instance refresh replaced
+  # a node, and every routed call kept selecting the terminated one, returning
+  # `service_unavailable "noconnection"` until the caller was restarted.
   defp get_or_build_ring(load_balancer_name, node_list) do
     case HashRingCache.get_ring(load_balancer_name) do
       nil -> rebuild_ring(load_balancer_name, node_list)
-      ring -> ring
+      ring -> rebuild_ring_if_stale(load_balancer_name, ring, node_list)
     end
+  end
+
+  defp rebuild_ring_if_stale(load_balancer_name, ring, node_list) do
+    if ring_nodes_match?(ring, node_list) do
+      ring
+    else
+      rebuild_ring(load_balancer_name, node_list)
+    end
+  end
+
+  # Runs on every keyed selection, so it stays proportional to the node count
+  # rather than the ring size — `HashRing.nodes/1` returns physical nodes, not
+  # the `weight`-multiplied virtual ones.
+  defp ring_nodes_match?(ring, node_list) do
+    ring_nodes = HashRing.nodes(ring)
+
+    length(ring_nodes) === length(node_list) and
+      MapSet.new(ring_nodes) === MapSet.new(node_list)
   end
 
   defp rebuild_ring(load_balancer_name, node_list) do

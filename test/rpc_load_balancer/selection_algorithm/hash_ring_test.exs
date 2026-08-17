@@ -170,4 +170,60 @@ defmodule RpcLoadBalancer.LoadBalancer.SelectionAlgorithm.HashRingTest do
       assert length(Enum.uniq(results)) > 1
     end
   end
+
+  describe "stale ring invalidation" do
+    # Regression: `get_or_build_ring/2` used to return the cached ring and
+    # ignore `node_list` entirely, so selection could hand back a node that had
+    # already left the cluster. The ring was only ever invalidated by the async
+    # `on_node_change/2` callback, so if that message was missed or arrived
+    # before membership actually changed, the stale ring persisted forever.
+    # Observed in production: an ASG instance refresh terminated a feed node and
+    # every routed call kept selecting the dead node, returning
+    # `service_unavailable "noconnection"` indefinitely.
+    test "rebuilds when a node has left the node list", %{name: name} do
+      before = [:node_a, :node_b, :node_c]
+      assert HashRing.choose_from_nodes(name, before, key: "k") in before
+
+      remaining = [:node_a, :node_b]
+
+      for _ <- 1..25 do
+        assert HashRing.choose_from_nodes(name, remaining, key: "k") in remaining
+      end
+    end
+
+    test "rebuilds when a node has joined the node list", %{name: name} do
+      HashRing.choose_from_nodes(name, [:node_a], key: "k")
+
+      grown = [:node_a, :node_b, :node_c, :node_d]
+      chosen = Enum.map(1..200, &HashRing.choose_from_nodes(name, grown, key: "user:#{&1}"))
+
+      assert Enum.all?(chosen, &(&1 in grown))
+      assert length(Enum.uniq(chosen)) > 1
+    end
+
+    test "rebuilds when the node set is swapped wholesale", %{name: name} do
+      HashRing.choose_from_nodes(name, [:old_a, :old_b], key: "k")
+
+      replaced = [:new_a, :new_b]
+      assert HashRing.choose_from_nodes(name, replaced, key: "k") in replaced
+    end
+
+    test "choose_nodes/4 also rebuilds on a changed node list", %{name: name} do
+      HashRing.choose_nodes(name, [:node_a, :node_b, :node_c], 2, key: "k")
+
+      remaining = [:node_a, :node_b]
+      picked = HashRing.choose_nodes(name, remaining, 2, key: "k")
+
+      assert Enum.all?(picked, &(&1 in remaining))
+    end
+
+    test "reuses the cached ring when membership is unchanged", %{name: name} do
+      nodes = [:node_a, :node_b, :node_c]
+      first = HashRing.choose_from_nodes(name, nodes, key: "stable")
+
+      for _ <- 1..25 do
+        assert HashRing.choose_from_nodes(name, nodes, key: "stable") === first
+      end
+    end
+  end
 end
