@@ -1,3 +1,8 @@
+## 0.3.6
+
+### Fixes
+- Widen the `node_filter` argument of `RpcLoadBalancer.call_on_random_node/5` and `RpcLoadBalancer.cast_on_random_node/5` from `String.t()` to `String.t() | Regex.t()`. Both already route node matching through `RpcLoadBalancer.NodeFilter.matches?/2`, which has accepted a `Regex.t()` (including the `excluded_node_patterns` carve-out, read via `Regex.source/1`) since 0.3.4 — only the specs still said string, so a regex filter worked at runtime but failed dialyzer for every consumer. An anchored filter such as `~r/^my_service@/` is now spec-valid, which matters where a plain substring filter would also match a differently-suffixed node of the same family (e.g. `my_service_scratch@…`) and `Enum.random/1` would route to it.
+
 ## 0.3.5
 
 ### Fixes

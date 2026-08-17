@@ -4,7 +4,7 @@ defmodule RpcLoadBalancer.MixProject do
   def project do
     [
       app: :rpc_load_balancer,
-      version: "0.3.5",
+      version: "0.3.6",
       elixir: "~> 1.13",
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),

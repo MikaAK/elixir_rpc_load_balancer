@@ -340,7 +340,7 @@ defmodule RpcLoadBalancer do
   # Random-node helpers
   # -------------------------------------------------------------------
 
-  @spec call_on_random_node(String.t(), module(), atom(), [any()], keyword()) ::
+  @spec call_on_random_node(String.t() | Regex.t(), module(), atom(), [any()], keyword()) ::
           ErrorMessage.t_res(any())
   def call_on_random_node(node_filter, module, fun, args, opts \\ []) do
     call_directly? = Keyword.get(opts, :call_directly?, RpcLoadBalancer.Config.call_directly?())
@@ -364,7 +364,7 @@ defmodule RpcLoadBalancer do
     end
   end
 
-  @spec cast_on_random_node(String.t(), module(), atom(), [any()], keyword()) ::
+  @spec cast_on_random_node(String.t() | Regex.t(), module(), atom(), [any()], keyword()) ::
           :ok | {:error, ErrorMessage.t()}
   def cast_on_random_node(node_filter, module, fun, args, opts \\ []) do
     call_directly? = Keyword.get(opts, :call_directly?, RpcLoadBalancer.Config.call_directly?())
