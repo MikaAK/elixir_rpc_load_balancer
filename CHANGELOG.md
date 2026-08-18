@@ -1,12 +1,12 @@
 ## 0.3.6
 
 ### Fixes
-- Widen the `node_filter` argument of `RpcLoadBalancer.call_on_random_node/5` and `RpcLoadBalancer.cast_on_random_node/5` from `String.t()` to `String.t() | Regex.t()`. Both already route node matching through `RpcLoadBalancer.NodeFilter.matches?/2`, which has accepted a `Regex.t()` (including the `excluded_node_patterns` carve-out, read via `Regex.source/1`) since 0.3.4 — only the specs still said string, so a regex filter worked at runtime but failed dialyzer for every consumer. An anchored filter such as `~r/^my_service@/` is now spec-valid, which matters where a plain substring filter would also match a differently-suffixed node of the same family (e.g. `my_service_scratch@…`) and `Enum.random/1` would route to it.
+- Widen the `node_filter` argument of `call_on_random_node/5` and `cast_on_random_node/5` to `String.t() | Regex.t()`; `NodeFilter.matches?/2` already accepted regexes, only the specs disagreed.
 
 ## 0.3.5
 
 ### Fixes
-- Rebuild the `HashRing` ring whenever the node list it is asked to select from no longer matches the ring's own node set. Previously `get_or_build_ring/2` returned the cached ring and ignored `node_list` entirely, relying solely on the asynchronous `on_node_change/2` callback for invalidation — so `select_node/2` could return a node that had already left the cluster, and a dropped or out-of-order `:pg` monitor message left the stale ring in place indefinitely. Observed in production: an autoscaling instance refresh replaced a node, and every routed call kept selecting the terminated one, returning `service_unavailable "noconnection"` until the calling node was restarted. Membership is now the source of truth rather than message delivery.
+- Rebuild the `HashRing` ring when its node set no longer matches the node list it is given, so `select_node/2` cannot keep returning a node that has left the cluster.
 
 ### Docs
 - Overhaul all guides for 0.3.x: `use RpcLoadBalancer` named modules, `LeastCpu`, telemetry/metrics, no-route retry, `excluded_node_patterns`, and the current cache/storage layout. New how-tos: named load balancer module, least CPU, retry behaviour, telemetry and metrics. Reference and architecture docs rewritten to match the code; stale moduledocs (`select_nodes/3`, ETS counters, `RpcLoadBalancer.LoadBalancer.start_link`) corrected.
